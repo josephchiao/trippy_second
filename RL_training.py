@@ -12,12 +12,12 @@ class RL_trainer:
     def __init__(self, model):
         
         self.model = model
-        self.log_std = 2
+        self.log_std = 1
         self.log_floor = -4
         self.log_ceiling = 3
         self.d_log_std = 0
         self.NN = nn.NeuralNetwork((4, 64, 64, 2), [nn.ReLU, nn.ReLU, [nn.linear, nn.sigmoid]], 'nn_library')
-        # self.NN.theta_generate()
+        self.NN.theta_generate()
         self.X = self.NN.theta_recover()
 
     def reward(self, state):
@@ -61,7 +61,7 @@ class RL_trainer:
         total_cost = 0
 
 
-        gamma = 0.999  # Discount factor (how much we care about the future)
+        gamma = 0.99  # Discount factor (how much we care about the future)
         reward_history = []
         log_std_history = []
         fail_count = 0
@@ -186,7 +186,7 @@ class RL_trainer:
             # Flush any remaining experience after both sides complete
             if len(states_memory) > 0:
                 self.NN.backward(np.array(states_memory), np.array(targets_memory), learning_rate / len(states_memory))
-                entropy_coeff = 0.5
+                entropy_coeff = 0.05
                 self.log_std -= learning_rate * (self.d_log_std / len(states_memory) - entropy_coeff)
                 self.log_std = np.clip(self.log_std, self.log_floor, self.log_ceiling)
 

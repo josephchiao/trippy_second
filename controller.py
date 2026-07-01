@@ -111,7 +111,7 @@ class SP_Controller:
         
         elif mode == 'ML':
             NN = nn.NeuralNetwork((4, 64, 64, 2), [nn.ReLU, nn.ReLU, [nn.linear, nn.sigmoid]], 'nn_library')
-            NN.theta_recover(2)
+            NN.theta_recover(0)
             self.motor_force = (NN.feedforward(RL_trainer.normalize(self, state = self.pendulum.state))[-1][0][1] - 0.5) * 200
             state_string = 'ML control'
 
