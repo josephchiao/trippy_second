@@ -12,7 +12,7 @@ class RL_trainer:
     def __init__(self, model):
         
         self.model = model
-        self.log_std = 1
+        self.log_std = 1.4
         self.log_floor = -4
         self.log_ceiling = 3
         self.d_log_std = 0
@@ -22,14 +22,13 @@ class RL_trainer:
 
     def reward(self, state):
 
-        """Max reward should be 10. Reward is based on how upright the pendulum is and how close the cart is to the center."""
+        """Max reward should be 1. Reward is based on how upright the pendulum is and how close the cart is to the center."""
 
-        location_cf = 2
-        angle_cf = 4
-        # - abs(self.model.motor_force)/10
-        # angle_cf * math.cos(state[1]) rewards being upright
+        location_cf = 0.1
+        angle_cf = 0.5
+        time_reward = 0.4
     
-        reward = (4 - angle_cf * math.cos(state[1]) + location_cf/(4*abs(state[0])+1))
+        reward = (time_reward - angle_cf * math.cos(state[1]) + location_cf/(4*abs(state[0])+1))
 
         return reward
 
@@ -46,8 +45,8 @@ class RL_trainer:
         # 1. Calculate the gradient for this specific frame
         step_d_log_std = -advantage * ((action_discrepency**2 / (sigma ** 2 + epsilon)) - 1.0)
         
-        if abs(step_d_log_std) > 10.0: 
-            step_d_log_std = np.sign(step_d_log_std) * 10.0
+        if abs(step_d_log_std) > 20.0: 
+            step_d_log_std = np.sign(step_d_log_std) * 20.0
             
         self.d_log_std += step_d_log_std
         
@@ -81,7 +80,7 @@ class RL_trainer:
 
         for episode in range(1000000):
 
-            learning_rate = 0.0001
+            learning_rate = 0.00001
             
             random_angle = np.pi + np.pi/240
             random_location = 0
@@ -137,7 +136,7 @@ class RL_trainer:
 
                     # Advantage: Was the move better than the Critic expected?
                     advantage = target_value - critic
-                    advantage = np.clip(advantage, -15.0, 15.0)
+                    advantage = np.clip(advantage, -5.0, 5.0)
 
                     # --- THE BACKWARD PASS ---
                     # 1. Backprop for the Critic (Mean Squared Error)
@@ -154,7 +153,7 @@ class RL_trainer:
                         advantage=advantage)
 
                     # Capping function
-                    if abs(d_V) > 1.0: d_V = np.sign(d_V) * 1.0
+                    # if abs(d_V) > 1.0: d_V = np.sign(d_V) * 1.0
                     # if abs(d_mu) > 0.25: d_mu = np.sign(d_mu) * 0.25
 
                     # Move to the next frame
@@ -163,13 +162,14 @@ class RL_trainer:
                     states_memory.append(normalized_state)
                     target_V = critic - d_V
                     target_mu = NN_output[1] - d_mu
-                    target_mu = np.clip(target_mu, 0.05, 0.95)
+                    # target_mu = np.clip(target_mu, 0.05, 0.95)
 
                     targets_memory.append([target_V, target_mu])
 
                     batch_size = 128
 
                     if len(states_memory) >= batch_size:
+                        
                         self.NN.backward(np.array(states_memory), np.array(targets_memory), learning_rate / batch_size)
 
                         # Update exploration noise (entropy_coeff resists collapse to floor)
@@ -196,7 +196,7 @@ class RL_trainer:
                 best_reward = total_episode_reward
                 second_best_reward = total_episode_reward
             
-            if total_episode_reward >= best_reward and total_episode_reward <= best_reward * 2 or episode == 0:  # Only consider it a new best if it's not an outlier that might be a lucky fluke
+            elif total_episode_reward >= best_reward and total_episode_reward <= best_reward * 2 or episode == 0:  # Only consider it a new best if it's not an outlier that might be a lucky fluke
                 second_best_reward = best_reward
                 best_reward = total_episode_reward
                 self.NN.theta_backup()  # slot0 (old best) -> slot1 before overwriting
