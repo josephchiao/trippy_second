@@ -189,7 +189,7 @@ def SP_animate(solution, cost, state_history, params, t_eval, fps = 60, speed = 
         current_time = t_eval[frame]
         time_text.set_text(f'Time: {current_time:.2f} s')
         location_text.set_text(f'Location: {x_c:.2f} m')
-        angle_1_text.set_text(f'Angle 1: {th1:.2f} rad')
+        angle_1_text.set_text(f'Angle 1: {th1:.4f} rad')
         force_text.set_text(f'Force: {f:.2f} N')
         state_text.set_text(f'State: {state}')
         
@@ -286,7 +286,7 @@ def custom_run(control_type = [], time_table = [], animation = True, speed = 1):
 def SP_run(control_type = "None", animation = True, speed = 1):
     
     t = 0
-    single_pendulum = physics.SinglePendulum(params = (9.81, 1, 1, 1), y0 = [0, np.pi, 0, 0], refresh_rate = refresh_rate)
+    single_pendulum = physics.SinglePendulum(params = (9.81, 1, 1, 1), y0 = [0, np.pi-0.2, 0, 0], refresh_rate = refresh_rate)
     motor_controller = controller.SP_Controller(single_pendulum, target = 0, max_motor_force = 100)
     solution = []
     state_history = []
