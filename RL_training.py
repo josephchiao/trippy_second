@@ -7,13 +7,15 @@ import redone_legacy
 import random
 import physics
 
+init_log_std = -1  # Initial exploration noise level (log scale)
+
 class RL_trainer:
 
     def __init__(self, model):
         
         self.model = model
-        self.log_std = 1.4
-        self.log_floor = -4
+        self.log_std = init_log_std
+        self.log_floor = -2
         self.log_ceiling = 3
         self.d_log_std = 0
         self.NN = nn.NeuralNetwork((4, 64, 64, 2), [nn.ReLU, nn.ReLU, [nn.linear, nn.sigmoid]], 'nn_library')
@@ -24,9 +26,9 @@ class RL_trainer:
 
         """Max reward should be 1. Reward is based on how upright the pendulum is and how close the cart is to the center."""
 
-        location_cf = 0.1
+        location_cf = 0
         angle_cf = 0.5
-        time_reward = 0.4
+        time_reward = 0.5
     
         reward = (time_reward - angle_cf * math.cos(state[1]) + location_cf/(4*abs(state[0])+1))
 
@@ -45,8 +47,8 @@ class RL_trainer:
         # 1. Calculate the gradient for this specific frame
         step_d_log_std = -advantage * ((action_discrepency**2 / (sigma ** 2 + epsilon)) - 1.0)
         
-        if abs(step_d_log_std) > 20.0: 
-            step_d_log_std = np.sign(step_d_log_std) * 20.0
+        # if abs(step_d_log_std) > 20.0: 
+        #     step_d_log_std = np.sign(step_d_log_std) * 20.0
             
         self.d_log_std += step_d_log_std
         
@@ -80,7 +82,7 @@ class RL_trainer:
 
         for episode in range(1000000):
 
-            learning_rate = 0.00001
+            learning_rate = 0.00005
             
             random_angle = np.pi + np.pi/240
             random_location = 0
@@ -219,7 +221,7 @@ class RL_trainer:
                 self.NN.theta_save(2)  # periodic save to slot2 for recovery from crashes, not policy collapse
                 print('Periodic Save to 2!')
 
-            if total_episode_reward < max(70, second_best_reward * 0.05):  # If we do very poorly, it's a sign of potential policy collapse, but we only want to trigger on a string of bad luck if we haven't had any recent successes to reassure us that the policy is still viable
+            if total_episode_reward < max(35, second_best_reward * 0.05):  # If we do very poorly, it's a sign of potential policy collapse, but we only want to trigger on a string of bad luck if we haven't had any recent successes to reassure us that the policy is still viable
                 fail_count += 1
             else:
                 fail_count = 0
@@ -227,7 +229,7 @@ class RL_trainer:
             if fail_count >= 100 and previously_saved:
                 self.NN.theta_recover(i = 1)
                 print('policy_collapse')
-                self.log_std = -4  # restore exploration, not kill it
+                self.log_std = init_log_std  # restore exploration, not kill it
                 fail_count = 0
 
             reward_history.append(total_episode_reward)
