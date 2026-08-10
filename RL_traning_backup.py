@@ -18,9 +18,14 @@ class RL_trainer:
         self.log_floor = -2
         self.log_ceiling = 3
         self.d_log_std = 0
-        self.NN = nn.NeuralNetwork((4, 16, 16, 2), [nn.ReLU, nn.ReLU, [nn.linear, nn.sigmoid]], 'nn_library')
-        # self.NN.theta_generate()
-        self.X = self.NN.theta_recover()
+        self.NN_V = nn.NeuralNetwork((4, 16, 16, 1), [nn.ReLU, nn.ReLU, nn.linear], 'V_nn_library')
+        self.NN_mu = nn.NeuralNetwork((4, 16, 16, 1), [nn.ReLU, nn.ReLU, nn.sigmoid], 'mu_nn_library')
+
+        self.NN_V.theta_generate()
+        self.NN_mu.theta_generate()
+
+        self.X_V = self.NN_V.theta_recover()
+        self.X_mu = self.NN_mu.theta_recover()
 
     def reward(self, state):
 
@@ -92,7 +97,8 @@ class RL_trainer:
             # Shared buffer across both sides so each batch mixes both starting configs.
             # Randomized order removes the systematic bias of always training side -1 first.
             states_memory = []
-            targets_memory = []
+            target_V_memory = []
+            target_mu_memory = []
             self.d_log_std = 0
             runtimes = []
             sides = [-1, 1]
@@ -109,10 +115,11 @@ class RL_trainer:
                     # Normalize before asking for an action
                     normalized_state = self.normalize(self.model.state)
 
-                    NN_output = self.NN.feedforward(normalized_state)[-1][0]
-                    self.model.motor_force = (NN_output[1] - 0.5) * 200 + np.exp(self.log_std) * np.random.randn()
+                    V = self.NN_V.feedforward(normalized_state)[-1][0]
+                    mu = self.NN_mu.feedforward(normalized_state)[-1][0][0]
+                    self.model.motor_force = (mu - 0.5) * 200 + np.exp(self.log_std) * np.random.randn()
 
-                    critic = NN_output[0]
+                    critic = V
 
                     # --- THE PHYSICS ENGINE ---
                     # The cart moves for 0.02 seconds using the chosen force
@@ -133,7 +140,7 @@ class RL_trainer:
 
                     else:
                         normalized_next_state = self.normalize(next_state)
-                        next_critic = self.NN.feedforward(normalized_next_state)[-1][0][0]
+                        next_critic = self.NN_V.feedforward(normalized_next_state)[-1][0]
                         target_value = reward + gamma * next_critic
 
                     # Advantage: Was the move better than the Critic expected?
@@ -150,7 +157,7 @@ class RL_trainer:
                     # This function updates self.d_log_std internally and returns the gradient for mu
                     d_mu = self.backward_std(
                         action=self.model.motor_force,
-                        mu=NN_output[1],
+                        mu=mu,
                         sigma=np.exp(self.log_std)/200,
                         advantage=advantage)
 
@@ -163,16 +170,18 @@ class RL_trainer:
 
                     states_memory.append(normalized_state)
                     target_V = critic + advantage_unclipped  # Use unclipped advantage for the Critic target to avoid biasing the Critic towards underestimating the value of states 
-                    target_mu = NN_output[1] - d_mu
+                    target_mu = mu - d_mu
                     # target_mu = np.clip(target_mu, 0.05, 0.95)
 
-                    targets_memory.append([target_V, target_mu])
+                    target_V_memory.append(target_V)
+                    target_mu_memory.append(target_mu)
 
                     batch_size = 32
 
                     if len(states_memory) >= batch_size:
                         
-                        self.NN.backward(np.array(states_memory), np.array(targets_memory), learning_rate / batch_size)
+                        self.NN_mu.backward(np.array(states_memory), np.array(target_mu_memory), learning_rate / batch_size)
+                        self.NN_V.backward(np.array(states_memory), np.array(target_V_memory), learning_rate / batch_size)
 
                         # Update exploration noise (entropy_coeff resists collapse to floor)
                         entropy_coeff = 0.05
@@ -180,7 +189,8 @@ class RL_trainer:
                         self.log_std = np.clip(self.log_std, self.log_floor, self.log_ceiling)
 
                         states_memory = []
-                        targets_memory = []
+                        target_V_memory = []
+                        target_mu_memory = []
                         self.d_log_std = 0
 
                 runtimes.append(t)
@@ -188,7 +198,8 @@ class RL_trainer:
             # Flush any remaining experience after both sides complete
             if len(states_memory) > 0:
                 entropy_coeff = 0.05
-                self.NN.backward(np.array(states_memory), np.array(targets_memory), learning_rate / len(states_memory))
+                self.NN_mu.backward(np.array(states_memory), np.array(target_mu_memory), learning_rate / batch_size)
+                self.NN_V.backward(np.array(states_memory), np.array(target_V_memory), learning_rate / batch_size)
                 self.log_std -= learning_rate * (self.d_log_std / len(states_memory) - entropy_coeff)
                 self.log_std = np.clip(self.log_std, self.log_floor, self.log_ceiling)
 
@@ -201,24 +212,29 @@ class RL_trainer:
             elif total_episode_reward >= best_reward and total_episode_reward <= best_reward * 2 or episode == 0:  # Only consider it a new best if it's not an outlier that might be a lucky fluke
                 second_best_reward = best_reward
                 best_reward = total_episode_reward
-                self.NN.theta_backup()  # slot0 (old best) -> slot1 before overwriting
-                self.NN.theta_save()    # current weights -> slot0
+                self.NN_mu.theta_backup()  # slot0 (old best) -> slot1 before overwriting
+                self.NN_V.theta_backup()  # slot0 (old best) -> slot1 before overwriting
+                self.NN_mu.theta_save()    # current weights -> slot0
+                self.NN_V.theta_save()    # current weights -> slot0
                 previously_saved = True
                 print('Saved to 0!')
 
             elif total_episode_reward >= second_best_reward and total_episode_reward < best_reward * 2:  # Only update second best if it's not an outlier that might be a lucky fluke
                 second_best_reward = total_episode_reward
-                self.NN.theta_save()    # save without touching slot1 backup
+                self.NN_mu.theta_save()    # save without touching slot1 backup
+                self.NN_V.theta_save()    # save without touching slot1 backup
                 previously_saved = True
                 print('Saved to 0 (Second best)!')
             
             if total_episode_reward > best_reward * 2:  # If we do way better than our current best, it's probably a lucky fluke, so don't update our best or second best records, but do save the weights in case it's a sign of something good to come and we want to be able to recover it if we crash before we see more good episodes
-                self.NN.theta_save(3)  # save to slot3 for recovery, not policy collapse
+                self.NN_mu.theta_save(3)  # save to slot3 for recovery, not policy collapse
+                self.NN_V.theta_save(3)  # save to slot3 for recovery, not policy collapse
                 total_episode_reward = best_reward  # Don't let the graphs get messed up by a lucky fluke outlier, but do save the weights in case it's a sign of something good to come and we want to be able to recover it if we crash before we see more good episodes
                 print('Saved to 3!')
             
             if episode % 100 == 0 and fail_count == 0:  # Only save periodically if we're not in a failure streak
-                self.NN.theta_save(2)  # periodic save to slot2 for recovery from crashes, not policy collapse
+                self.NN_mu.theta_save(2)  # periodic save to slot2 for recovery from crashes, not policy collapse
+                self.NN_V.theta_save(2)  # periodic save to slot2 for recovery from crashes, not policy collapse
                 print('Periodic Save to 2!')
 
             if total_episode_reward < max(35, second_best_reward * 0.05):  # If we do very poorly, it's a sign of potential policy collapse, but we only want to trigger on a string of bad luck if we haven't had any recent successes to reassure us that the policy is still viable
@@ -227,7 +243,8 @@ class RL_trainer:
                 fail_count = 0
 
             if fail_count >= 100 and previously_saved:
-                self.NN.theta_recover(i = 1)
+                self.NN_mu.theta_recover(i = 1)
+                self.NN_V.theta_recover(i = 1)
                 print('policy_collapse')
                 self.log_std = init_log_std  # restore exploration, not kill it
                 fail_count = 0
@@ -244,7 +261,8 @@ class RL_trainer:
             ax2.autoscale_view()
             fig.canvas.flush_events()
 
-        self.NN.theta_save(2)
+        self.NN_mu.theta_save(2)
+        self.NN_V.theta_save(2)
         plt.ioff()
         plt.show()
 
