@@ -7,7 +7,7 @@ import redone_legacy
 import random
 import physics
 
-init_log_std = -1  # Initial exploration noise level (log scale)
+init_log_std = 1.1  # Initial exploration noise level (log scale)
 
 class RL_trainer:
 
@@ -128,8 +128,8 @@ class RL_trainer:
                         target_value = reward # If we died, there is no future.
                         if t < (max_runtime) * self.model.refresh_rate:
                             target_value = -50.0   # Punish death before time ends
-                        if t < 30:
-                            target_value = -100.0  # Punish early death heavily
+                        # if t < 30:
+                        #     target_value = -100.0  # Punish early death heavily
 
                     else:
                         normalized_next_state = self.normalize(next_state)
@@ -168,7 +168,7 @@ class RL_trainer:
 
                     targets_memory.append([target_V, target_mu])
 
-                    batch_size = 128
+                    batch_size = 32
 
                     if len(states_memory) >= batch_size:
                         
@@ -187,8 +187,8 @@ class RL_trainer:
 
             # Flush any remaining experience after both sides complete
             if len(states_memory) > 0:
-                self.NN.backward(np.array(states_memory), np.array(targets_memory), learning_rate / len(states_memory))
                 entropy_coeff = 0.05
+                self.NN.backward(np.array(states_memory), np.array(targets_memory), learning_rate / len(states_memory))
                 self.log_std -= learning_rate * (self.d_log_std / len(states_memory) - entropy_coeff)
                 self.log_std = np.clip(self.log_std, self.log_floor, self.log_ceiling)
 
