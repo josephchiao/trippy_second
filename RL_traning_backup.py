@@ -115,7 +115,7 @@ class RL_trainer:
                     # Normalize before asking for an action
                     normalized_state = self.normalize(self.model.state)
 
-                    V = self.NN_V.feedforward(normalized_state)[-1][0]
+                    V = self.NN_V.feedforward(normalized_state)[-1][0][0]
                     mu = self.NN_mu.feedforward(normalized_state)[-1][0][0]
                     self.model.motor_force = (mu - 0.5) * 200 + np.exp(self.log_std) * np.random.randn()
 
@@ -173,15 +173,15 @@ class RL_trainer:
                     target_mu = mu - d_mu
                     # target_mu = np.clip(target_mu, 0.05, 0.95)
 
-                    target_V_memory.append(target_V)
-                    target_mu_memory.append(target_mu)
+                    target_V_memory.append([target_V])
+                    target_mu_memory.append([target_mu])
 
                     batch_size = 32
 
                     if len(states_memory) >= batch_size:
                         
                         self.NN_mu.backward(np.array(states_memory), np.array(target_mu_memory), learning_rate / batch_size)
-                        self.NN_V.backward(np.array(states_memory), np.array(target_V_memory), learning_rate / batch_size)
+                        self.NN_V.backward(np.array(states_memory), np.array(target_V_memory), learning_rate * 10 / batch_size)
 
                         # Update exploration noise (entropy_coeff resists collapse to floor)
                         entropy_coeff = 0.05

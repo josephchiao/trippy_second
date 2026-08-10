@@ -110,9 +110,9 @@ class SP_Controller:
                     self.stable_counter = 0      
         
         elif mode == 'ML':
-            NN = nn.NeuralNetwork((4, 16, 16, 2), [nn.ReLU, nn.ReLU, [nn.linear, nn.sigmoid]], 'nn_library')
+            NN = nn.NeuralNetwork((4, 16, 16, 1), [nn.ReLU, nn.ReLU, nn.sigmoid], 'mu_nn_library')
             NN.theta_recover(0)
-            self.motor_force = (NN.feedforward(RL_trainer.normalize(self, state = self.pendulum.state))[-1][0][1] - 0.5) * 200
+            self.motor_force = (NN.feedforward(RL_trainer.normalize(self, state = self.pendulum.state))[-1][0][0] - 0.5) * 200
             state_string = 'ML control'
 
         # reject if the motor is asked to do more than it could
