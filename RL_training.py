@@ -31,8 +31,8 @@ class RL_trainer:
 
         """Max reward should be 1. Reward is based on how upright the pendulum is and how close the cart is to the center."""
 
-        location_cf = 0.1
-        angle_cf = 0.7
+        location_cf = 0
+        angle_cf = 0.8
         time_reward = 0.2
     
         reward = (time_reward - angle_cf * math.cos(state[1]) + location_cf/(4*abs(state[0])+1))
@@ -87,7 +87,7 @@ class RL_trainer:
 
         for episode in range(1000000):
 
-            learning_rate = 0.00005
+            learning_rate = 0.00008
             V_lrn = 15  # Critic learning rate multiplier
             random_angle = np.pi/120
             random_location = 0
@@ -128,20 +128,13 @@ class RL_trainer:
                     # has_nan = np.isnan(next_state).any()
                     done = next_state[1] <= np.pi/2 or next_state[1] >= 3*np.pi/2 or t >= (max_runtime) * self.model.refresh_rate or abs(next_state[2]) > 100 or abs(next_state[3]) > 100
 
-                    # --- THE TARGET CALCULATION ---
-                    # Value of the state we just landed in
-                    if done:
-                        target_value = reward # If we died, there is no future.
-                        if t < (max_runtime) * self.model.refresh_rate + 1:
-                            target_value = -50.0   # Punish death before time ends
-                        # if t < 30:
-                        #     target_value = -100.0  # Punish early death heavily
+                    normalized_next_state = self.normalize(next_state)
+                    next_critic = self.NN_V.feedforward(normalized_next_state)[-1][0][0]
 
+                    if done and t < (max_runtime) * self.model.refresh_rate:
+                        target_value = reward                             # true terminal: no future
                     else:
-                        normalized_next_state = self.normalize(next_state)
-                        next_critic = self.NN_V.feedforward(normalized_next_state)[-1][0][0]
-                        target_value = reward + gamma * next_critic
-
+                        target_value = reward + gamma * next_critic       # alive, or truncated at timeout
                     # Advantage: Was the move better than the Critic expected?
                     advantage_unclipped = target_value - V
                     advantage = np.clip(advantage_unclipped, -5.0, 5.0)
