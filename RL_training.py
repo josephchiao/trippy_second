@@ -6,7 +6,7 @@ from scipy.integrate import solve_ivp
 import random
 import physics
 
-init_log_std = -0.5  # Initial exploration noise level (log scale)
+init_log_std = 0.3  # Initial exploration noise level (log scale)
 
 class RL_trainer:
 
@@ -20,8 +20,8 @@ class RL_trainer:
         self.NN_V = nn.NeuralNetwork((4, 16, 16, 1), [nn.ReLU, nn.ReLU, nn.linear], 'V_nn_library')
         self.NN_mu = nn.NeuralNetwork((4, 16, 16, 1), [nn.ReLU, nn.ReLU, nn.sigmoid], 'mu_nn_library')
 
-        self.NN_V.theta_generate()
-        self.NN_mu.theta_generate()
+        # self.NN_V.theta_generate()
+        # self.NN_mu.theta_generate()
 
         self.NN_V.theta_recover()
         self.NN_mu.theta_recover()
@@ -33,9 +33,9 @@ class RL_trainer:
 
         """Max reward should be 1. Reward is based on how upright the pendulum is and how close the cart is to the center."""
 
-        location_cf = 0
-        angle_cf = 0.8
-        time_reward = 0.2
+        location_cf = 0.4
+        angle_cf = 0.6
+        time_reward = 0
     
         reward = (time_reward - angle_cf * math.cos(state[1]) + location_cf/(4*abs(state[0])+1))
 
