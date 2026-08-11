@@ -3,7 +3,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import math
 from scipy.integrate import solve_ivp
-import redone_legacy
 import random
 import physics
 
@@ -27,6 +26,9 @@ class RL_trainer:
         self.NN_V.theta_recover()
         self.NN_mu.theta_recover()
 
+        self.NN_V_tgt = nn.NeuralNetwork((4, 16, 16, 1), [nn.ReLU, nn.ReLU, nn.linear], 'V_nn_library')
+        self.sync_target(hard=True)
+
     def reward(self, state):
 
         """Max reward should be 1. Reward is based on how upright the pendulum is and how close the cart is to the center."""
@@ -42,6 +44,17 @@ class RL_trainer:
     def normalize(self, state):
         """Normalize terms for the state to be readable by the neural network."""
         return np.array([2/(1 + np.exp(-2 * state[0])) - 1, state[1], state[2], state[3]])
+
+
+    def sync_target(self, hard=False, tau=0.05):
+            """Blend the live critic into the frozen target. hard=True copies outright."""
+            if hard:
+                self.NN_V_tgt.theta = [w.copy() for w in self.NN_V.theta]
+                self.NN_V_tgt.b     = [w.copy() for w in self.NN_V.b]
+            else:
+                for i in range(len(self.NN_V.theta)):
+                    self.NN_V_tgt.theta[i] = (1 - tau) * self.NN_V_tgt.theta[i] + tau * self.NN_V.theta[i]
+                    self.NN_V_tgt.b[i]     = (1 - tau) * self.NN_V_tgt.b[i]     + tau * self.NN_V.b[i]
 
     def backward_std(self, action, mu, sigma, advantage):
         epsilon = 1e-12  # Small constant to prevent division by zero
@@ -87,8 +100,8 @@ class RL_trainer:
 
         for episode in range(1000000):
 
-            learning_rate = 0.00008
-            V_lrn = 15  # Critic learning rate multiplier
+            learning_rate = 0.00003
+            V_lrn = 5  # Critic learning rate multiplier
             random_angle = np.pi/120
             random_location = 0
 
@@ -115,7 +128,7 @@ class RL_trainer:
                     # Normalize before asking for an action
                     normalized_state = self.normalize(self.model.state)
 
-                    V = self.NN_V.feedforward(normalized_state)[-1][0][0]
+                    V = self.NN_V_tgt.feedforward(normalized_state)[-1][0][0]
                     mu = self.NN_mu.feedforward(normalized_state)[-1][0][0]
                     self.model.motor_force = (mu - 0.5) * 200 + np.exp(self.log_std) * np.random.randn()
 
@@ -228,7 +241,7 @@ class RL_trainer:
                 self.NN_V.theta_save(2)  # periodic save to slot2 for recovery from crashes, not policy collapse
                 print('Periodic Save to 2!')
 
-            if total_episode_reward < max(35, second_best_reward * 0.05):  # If we do very poorly, it's a sign of potential policy collapse, but we only want to trigger on a string of bad luck if we haven't had any recent successes to reassure us that the policy is still viable
+            if total_episode_reward < max(60, second_best_reward * 0.05):  # If we do very poorly, it's a sign of potential policy collapse, but we only want to trigger on a string of bad luck if we haven't had any recent successes to reassure us that the policy is still viable
                 fail_count += 1
             else:
                 fail_count = 0
@@ -236,10 +249,12 @@ class RL_trainer:
             if fail_count >= 500 and previously_saved:
                 self.NN_mu.theta_recover(i = 1)
                 self.NN_V.theta_recover(i = 1)
+                self.sync_target(hard=True)
                 print('policy_collapse')
                 self.log_std = init_log_std  # restore exploration, not kill it
                 fail_count = 0
 
+            self.sync_target(tau=0.05)
             reward_history.append(total_episode_reward)
             log_std_history.append(self.log_std)
 
