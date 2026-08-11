@@ -7,13 +7,14 @@ from RL_training import RL_trainer
 # from main import SinglePendulum
 
 class SP_Controller:
-    def __init__(self, pendulum, max_motor_force = 100, target = 0):
+    def __init__(self, pendulum, max_motor_force = 100, target = 0, network = 0):
         
         self.pendulum = pendulum
         self.motor_force = 0
         self.solution = []
         self.max_motor_force = max_motor_force
         self.target = target
+        self.network = network
 
         self.stable_counter = 0
         self.taming_time = 0
@@ -111,7 +112,7 @@ class SP_Controller:
         
         elif mode == 'ML':
             NN = nn.NeuralNetwork((4, 16, 16, 1), [nn.ReLU, nn.ReLU, nn.sigmoid], 'mu_nn_library')
-            NN.theta_recover(0)
+            NN.theta_recover(self.network)
             self.motor_force = (NN.feedforward(RL_trainer.normalize(self, state = self.pendulum.state))[-1][0][0] - 0.5) * 200
             state_string = 'ML control'
 

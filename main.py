@@ -283,11 +283,11 @@ def custom_run(control_type = [], time_table = [], animation = True, speed = 1):
         t_array = np.linspace(0, runtime, int(time_table[-1] * refresh_rate))
         DP_animate(solution, total_cost, state_history, double_pendulum.params, t_array, fps = refresh_rate, speed = speed)
 
-def SP_run(control_type = "None", animation = True, speed = 1):
+def SP_run(control_type = "None", animation = True, speed = 1, network = 0):
     
     t = 0
     single_pendulum = physics.SinglePendulum(params = (9.81, 1, 1, 1), y0 = [0, np.pi-0.2, 0, 0], refresh_rate = refresh_rate)
-    motor_controller = controller.SP_Controller(single_pendulum, target = 0, max_motor_force = 100)
+    motor_controller = controller.SP_Controller(single_pendulum, target = 0, max_motor_force = 100, network = network)
     solution = []
     state_history = []
     total_cost = 0
@@ -320,4 +320,4 @@ def SP_run(control_type = "None", animation = True, speed = 1):
 if __name__ == "__main__":
     # run(control_type = "inverted_rod_2", animation = True, speed = 1)
     # custom_run(['position_hold', 'inverted_rod_1', 'inverted_rod_2'], [15,45,75])
-    SP_run(control_type = "ML", animation = True, speed = 1)
+    SP_run(control_type = "ML", animation = True, speed = 1, network = 2)
