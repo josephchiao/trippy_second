@@ -100,8 +100,8 @@ class RL_trainer:
 
         for episode in range(1000000):
 
-            learning_rate = 0.00003
-            V_lrn = 5  # Critic learning rate multiplier
+            learning_rate = 0.00005
+            V_lrn = 10  # Critic learning rate multiplier
             random_angle = np.pi/120
             random_location = 0
 
@@ -128,7 +128,7 @@ class RL_trainer:
                     # Normalize before asking for an action
                     normalized_state = self.normalize(self.model.state)
 
-                    V = self.NN_V_tgt.feedforward(normalized_state)[-1][0][0]
+                    V = self.NN_V.feedforward(normalized_state)[-1][0][0]
                     mu = self.NN_mu.feedforward(normalized_state)[-1][0][0]
                     self.model.motor_force = (mu - 0.5) * 200 + np.exp(self.log_std) * np.random.randn()
 
@@ -142,7 +142,7 @@ class RL_trainer:
                     done = next_state[1] <= np.pi/2 or next_state[1] >= 3*np.pi/2 or t >= (max_runtime) * self.model.refresh_rate or abs(next_state[2]) > 100 or abs(next_state[3]) > 100
 
                     normalized_next_state = self.normalize(next_state)
-                    next_critic = self.NN_V.feedforward(normalized_next_state)[-1][0][0]
+                    next_critic = self.NN_V_tgt.feedforward(normalized_next_state)[-1][0][0]
 
                     if done and t < (max_runtime) * self.model.refresh_rate:
                         target_value = reward                             # true terminal: no future
