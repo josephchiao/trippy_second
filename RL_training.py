@@ -117,6 +117,11 @@ class RL_trainer:
             sides = [-1, 1]
             random.shuffle(sides)
 
+            if episode < 100:
+                dynamic_entropy = 0.05 # Sample a single noise value for this episode
+            else:       
+                dynamic_entropy = (-np.mean(reward_history[-100:])/5000 + 1) * 0.05  # Sample a single noise value for this episode
+
             for side in sides:
                 self.model.state = [0, np.pi + side * random_angle, 0, 0]
                 t = 0
@@ -177,6 +182,7 @@ class RL_trainer:
                     target_V = V + advantage_unclipped  # Use unclipped advantage for the Critic target to avoid biasing the Critic towards underestimating the value of states 
                     target_mu = mu - d_mu
                     # target_mu = np.clip(target_mu, 0.05, 0.95)
+                    target_V = np.clip(target_V, -5.0, 105.0)
 
                     target_V_memory.append(target_V)
                     target_mu_memory.append(target_mu)
@@ -188,8 +194,7 @@ class RL_trainer:
                         self.NN_V.backward(np.array(states_memory), np.array(target_V_memory).reshape(-1, 1), learning_rate * V_lrn / batch_size)
 
                         # Update exploration noise (entropy_coeff resists collapse to floor)
-                        entropy_coeff = 0.05
-                        self.log_std -= learning_rate * (self.d_log_std / batch_size - entropy_coeff)
+                        self.log_std -= learning_rate * (self.d_log_std / batch_size - dynamic_entropy)
                         self.log_std = np.clip(self.log_std, self.log_floor, self.log_ceiling)
 
                         states_memory = []
@@ -201,10 +206,9 @@ class RL_trainer:
 
             # Flush any remaining experience after both sides complete
             if len(states_memory) > 0:
-                entropy_coeff = 0.05
                 self.NN_mu.backward(np.array(states_memory), np.array(target_mu_memory).reshape(-1, 1), learning_rate / batch_size)
                 self.NN_V.backward(np.array(states_memory), np.array(target_V_memory).reshape(-1, 1), learning_rate * V_lrn / batch_size)
-                self.log_std -= learning_rate * (self.d_log_std / len(states_memory) - entropy_coeff)
+                self.log_std -= learning_rate * (self.d_log_std / len(states_memory) - dynamic_entropy)
                 self.log_std = np.clip(self.log_std, self.log_floor, self.log_ceiling)
 
             print(f"Episode {episode} finished! Total Reward: {total_episode_reward:.2f}, runtime = {runtimes[0]}, {runtimes[1]}")
