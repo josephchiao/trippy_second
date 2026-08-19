@@ -100,7 +100,7 @@ class RL_trainer:
 
         for episode in range(1000000):
 
-            learning_rate = 0.00004
+            learning_rate = 0.00005
             V_lrn = 10  # Critic learning rate multiplier
             random_angle = np.pi/120
             random_location = 0
@@ -120,7 +120,7 @@ class RL_trainer:
             if episode < 100:
                 dynamic_entropy = 0.05 # Sample a single noise value for this episode
             else:       
-                dynamic_entropy = (-np.mean(reward_history[-100:])/5000 + 1) * 0.05  # Sample a single noise value for this episode
+                dynamic_entropy = max(-0.001, (-np.mean(reward_history[-100:])/2000 + 1) * 0.05)  # Sample a single noise value for this episode
 
             for side in sides:
                 self.model.state = [0, np.pi + side * random_angle, 0, 0]
@@ -144,7 +144,7 @@ class RL_trainer:
                     reward = self.reward(next_state)
                     total_episode_reward += reward
                     # has_nan = np.isnan(next_state).any()
-                    done = next_state[1] <= np.pi/2 or next_state[1] >= 3*np.pi/2 or t >= (max_runtime) * self.model.refresh_rate or abs(next_state[2]) > 100 or abs(next_state[3]) > 100
+                    done = next_state[1] <= np.pi/4 or next_state[1] >= 7*np.pi/4 or t >= (max_runtime) * self.model.refresh_rate or abs(next_state[2]) > 100 or abs(next_state[3]) > 100
 
                     normalized_next_state = self.normalize(next_state)
                     next_critic = self.NN_V_tgt.feedforward(normalized_next_state)[-1][0][0]
@@ -245,12 +245,12 @@ class RL_trainer:
                 self.NN_V.theta_save(2)  # periodic save to slot2 for recovery from crashes, not policy collapse
                 print('Periodic Save to 2!')
 
-            if total_episode_reward < max(60, second_best_reward * 0.05):  # If we do very poorly, it's a sign of potential policy collapse, but we only want to trigger on a string of bad luck if we haven't had any recent successes to reassure us that the policy is still viable
+            if total_episode_reward < max(45, second_best_reward * 0.05):  # If we do very poorly, it's a sign of potential policy collapse, but we only want to trigger on a string of bad luck if we haven't had any recent successes to reassure us that the policy is still viable
                 fail_count += 1
             else:
                 fail_count = 0
 
-            if fail_count >= 500 and previously_saved:
+            if fail_count >= 200 and previously_saved:
                 self.NN_mu.theta_recover(i = 1)
                 self.NN_V.theta_recover(i = 1)
                 self.sync_target(hard=True)
