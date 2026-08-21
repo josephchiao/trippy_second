@@ -6,7 +6,7 @@ from scipy.integrate import solve_ivp
 import random
 import physics
 
-init_log_std = 1  # Initial exploration noise level (log scale)
+init_log_std = 0.5  # Initial exploration noise level (log scale)
 
 class RL_trainer:
 
@@ -33,14 +33,14 @@ class RL_trainer:
 
         """Max reward should be 1. Reward is based on how upright the pendulum is and how close the cart is to the center."""
 
-        location_cf = 0.001
-        angle_cf = 1.999
+        location_cf = 0.1
+        angle_cf = 1.9
         time_reward = -1
         special_angle_reward = 0
     
-        reward = (time_reward - angle_cf * math.cos(state[1]) + location_cf * (1 - abs(state[0])) + special_angle_reward * (state[1] < np.pi + 0.01 and state[1] > np.pi - 0.01))
+        reward = (time_reward - angle_cf * math.cos(state[1]) + max(0, location_cf * (1 - 0.2 * abs(state[0]))) + special_angle_reward * (state[1] < np.pi + 0.01 and state[1] > np.pi - 0.01))
 
-        return max(0, reward)
+        return reward
 
     def normalize(self, state):
         """Normalize terms for the state to be readable by the neural network."""
@@ -101,9 +101,9 @@ class RL_trainer:
 
         for episode in range(1000000):
 
-            learning_rate = 0.0001
-            V_lrn = 10  # Critic learning rate multiplier
-            random_angle = np.pi/10
+            learning_rate = 0.00006
+            V_lrn = 20  # Critic learning rate multiplier
+            random_angle = np.pi/30
             random_location = 0
 
             total_episode_reward = 0
@@ -212,7 +212,7 @@ class RL_trainer:
                 self.log_std -= learning_rate * (self.d_log_std / len(states_memory) - dynamic_entropy)
                 self.log_std = np.clip(self.log_std, self.log_floor, self.log_ceiling)
 
-            print(f"Episode {episode} finished! Total Reward: {total_episode_reward:.2f}, runtime = {runtimes[0]}, {runtimes[1]}")
+            print(f"Episode {episode} finished! Total Reward: {total_episode_reward:.2f}, runtime = {runtimes[0]}, {runtimes[1]}, advantage = {advantage:.2f}")
 
             if episode == 0:
                 best_reward = total_episode_reward
@@ -246,7 +246,7 @@ class RL_trainer:
                 self.NN_V.theta_save(2)  # periodic save to slot2 for recovery from crashes, not policy collapse
                 print('Periodic Save to 2!')
 
-            if total_episode_reward < max(45, second_best_reward * 0.05):  # If we do very poorly, it's a sign of potential policy collapse, but we only want to trigger on a string of bad luck if we haven't had any recent successes to reassure us that the policy is still viable
+            if total_episode_reward < max(20, second_best_reward * 0.2):  # If we do very poorly, it's a sign of potential policy collapse, but we only want to trigger on a string of bad luck if we haven't had any recent successes to reassure us that the policy is still viable
                 fail_count += 1
             else:
                 fail_count = 0

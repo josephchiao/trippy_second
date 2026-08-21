@@ -286,7 +286,7 @@ def custom_run(control_type = [], time_table = [], animation = True, speed = 1):
 def SP_run(control_type = "None", animation = True, speed = 1, network = 0):
     
     t = 0
-    single_pendulum = physics.SinglePendulum(params = (9.81, 1, 1, 1), y0 = [-1, np.pi, 0, 0], refresh_rate = refresh_rate)
+    single_pendulum = physics.SinglePendulum(params = (9.81, 1, 1, 1), y0 = [-1, np.pi-0.2, 0, 0], refresh_rate = refresh_rate)
     motor_controller = controller.SP_Controller(single_pendulum, target = 0, max_motor_force = 100, network = network)
     solution = []
     state_history = []
