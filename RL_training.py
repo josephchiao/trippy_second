@@ -6,7 +6,7 @@ from scipy.integrate import solve_ivp
 import random
 import physics
 
-init_log_std = 0  # Initial exploration noise level (log scale)
+init_log_std = -1  # Initial exploration noise level (log scale)
 
 class RL_trainer:
 
@@ -20,8 +20,8 @@ class RL_trainer:
         self.NN_V = nn.NeuralNetwork((4, 16, 16, 1), [nn.ReLU, nn.ReLU, nn.linear], 'V_nn_library')
         self.NN_mu = nn.NeuralNetwork((4, 16, 16, 1), [nn.ReLU, nn.ReLU, nn.sigmoid], 'mu_nn_library')
 
-        self.NN_V.theta_generate()
-        self.NN_mu.theta_generate()
+        # self.NN_V.theta_generate()
+        # self.NN_mu.theta_generate()
 
         self.NN_V.theta_recover()
         self.NN_mu.theta_recover()
@@ -33,11 +33,12 @@ class RL_trainer:
 
         """Max reward should be 1. Reward is based on how upright the pendulum is and how close the cart is to the center."""
 
-        location_cf = 0
-        angle_cf = 1
-        time_reward = 0
+        location_cf = 0.0
+        angle_cf = 2
+        time_reward = -1
+        special_angle_reward = 0
     
-        reward = (time_reward - angle_cf * math.cos(state[1]) + location_cf/(4*abs(state[0])+1))
+        reward = (time_reward - angle_cf * math.cos(state[1]) + location_cf/(4*abs(state[0])+1) + special_angle_reward * (state[1] < np.pi + 0.01 and state[1] > np.pi - 0.01))
 
         return reward
 
@@ -100,9 +101,9 @@ class RL_trainer:
 
         for episode in range(1000000):
 
-            learning_rate = 0.00005
+            learning_rate = 0.000004
             V_lrn = 10  # Critic learning rate multiplier
-            random_angle = np.pi/120
+            random_angle = np.pi/10
             random_location = 0
 
             total_episode_reward = 0
@@ -144,7 +145,7 @@ class RL_trainer:
                     reward = self.reward(next_state)
                     total_episode_reward += reward
                     # has_nan = np.isnan(next_state).any()
-                    done = next_state[1] <= np.pi/4 or next_state[1] >= 7*np.pi/4 or t >= (max_runtime) * self.model.refresh_rate or abs(next_state[2]) > 100 or abs(next_state[3]) > 100
+                    done = next_state[1] <= np.pi/2 or next_state[1] >= 3*np.pi/2 or t >= (max_runtime) * self.model.refresh_rate or abs(next_state[2]) > 100 or abs(next_state[3]) > 100
 
                     normalized_next_state = self.normalize(next_state)
                     next_critic = self.NN_V_tgt.feedforward(normalized_next_state)[-1][0][0]
