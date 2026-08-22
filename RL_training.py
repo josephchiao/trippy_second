@@ -204,7 +204,7 @@ class RL_trainer:
 
                     if len(states_memory) >= batch_size:
                         self.NN_mu.backward(np.array(states_memory), np.array(target_mu_memory).reshape(-1, 1), learning_rate_discount * learning_rate / batch_size)
-                        self.NN_V.backward(np.array(states_memory), np.array(target_V_memory).reshape(-1, 1), learning_rate_discount * learning_rate * V_lrn / batch_size)
+                        self.NN_V.backward(np.array(states_memory), np.array(target_V_memory).reshape(-1, 1),  learning_rate * V_lrn / batch_size)
 
                         # Update exploration noise (entropy_coeff resists collapse to floor)
                         self.log_std -= learning_rate_discount * learning_rate * (self.d_log_std / batch_size - dynamic_entropy)
@@ -220,11 +220,10 @@ class RL_trainer:
             # Flush any remaining experience after both sides complete
             if len(states_memory) > 0:
                 self.NN_mu.backward(np.array(states_memory), np.array(target_mu_memory).reshape(-1, 1), learning_rate_discount * learning_rate / batch_size)
-                self.NN_V.backward(np.array(states_memory), np.array(target_V_memory).reshape(-1, 1), learning_rate_discount * learning_rate * V_lrn / batch_size)
+                self.NN_V.backward(np.array(states_memory), np.array(target_V_memory).reshape(-1, 1), learning_rate * V_lrn / batch_size)
                 self.log_std -= learning_rate_discount * learning_rate * (self.d_log_std / len(states_memory) - dynamic_entropy)
                 self.log_std = np.clip(self.log_std, self.log_floor, self.log_ceiling)
 
-            learning_rate_discount = np.clip(3 - 3 * total_episode_reward / 7200, 0.01, 1.0)
 
             print(f"Episode {episode} finished! Total Reward: {total_episode_reward:.2f}, runtime = {runtimes[0]}, {runtimes[1]}, advantage = {advantage:.2f}")
 
@@ -278,6 +277,9 @@ class RL_trainer:
             log_std_history.append(self.log_std)
             advantage_history.append(np.mean(np.abs(episode_advantages)) if episode_advantages else 0.0)
             signed_advantage_history.append(np.mean(episode_advantages) if episode_advantages else 0.0)
+
+            recent = np.mean(reward_history[-50:])
+            learning_rate_discount = float(np.clip(3 - 3 * recent / 7200, 0.1, 1.0))
 
             episodes = range(len(reward_history))
             line1.set_data(episodes, reward_history)
