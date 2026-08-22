@@ -6,7 +6,7 @@ from scipy.integrate import solve_ivp
 import random
 import physics
 
-init_log_std = 0.5  # Initial exploration noise level (log scale)
+init_log_std = 1  # Initial exploration noise level (log scale)
 
 class RL_trainer:
 
@@ -20,8 +20,8 @@ class RL_trainer:
         self.NN_V = nn.NeuralNetwork((4, 16, 16, 1), [nn.ReLU, nn.ReLU, nn.linear], 'V_nn_library')
         self.NN_mu = nn.NeuralNetwork((4, 16, 16, 1), [nn.ReLU, nn.ReLU, nn.sigmoid], 'mu_nn_library')
 
-        # self.NN_V.theta_generate()
-        # self.NN_mu.theta_generate()
+        self.NN_V.theta_generate()
+        self.NN_mu.theta_generate()
 
         self.NN_V.theta_recover()
         self.NN_mu.theta_recover()
@@ -33,9 +33,9 @@ class RL_trainer:
 
         """Max reward should be 1. Reward is based on how upright the pendulum is and how close the cart is to the center."""
 
-        location_cf = 0.1
-        angle_cf = 1.9
-        time_reward = -1
+        location_cf = 0
+        angle_cf = 1
+        time_reward = 0
         special_angle_reward = 0
     
         reward = (time_reward - angle_cf * math.cos(state[1]) + max(0, location_cf * (1 - 0.2 * abs(state[0]))) + special_angle_reward * (state[1] < np.pi + 0.01 and state[1] > np.pi - 0.01))
@@ -84,16 +84,26 @@ class RL_trainer:
         gamma = 0.99  # Discount factor (how much we care about the future)
         reward_history = []
         log_std_history = []
+        advantage_history = []
+        signed_advantage_history = []
         fail_count = 0
 
         plt.ion()
-        fig, (ax1, ax2) = plt.subplots(2, 1)
+        fig, (ax1, ax2, ax3) = plt.subplots(3, 1, constrained_layout=True)
         ax1.set_xlabel('Episode')
         ax1.set_ylabel('Reward')
         ax2.set_xlabel('Episode')
         ax2.set_ylabel('Log Std')
+        ax3.set_xlabel('Episode')
+        ax3.set_ylabel('Mean Advantage')
+        ax1.grid(True, alpha=0.3)
+        ax2.grid(True, alpha=0.3)
+        ax3.grid(True, alpha=0.3)
         line1, = ax1.plot([], [])
         line2, = ax2.plot([], [])
+        line3, = ax3.plot([], [], label='|advantage|')
+        line4, = ax3.plot([], [], label='signed')
+        ax3.legend(loc='upper right', fontsize='small')
         best_reward = 0
         second_best_reward = 0
         previously_saved = False  # don't let recovery load a stale checkpoint from a previous run
@@ -101,10 +111,10 @@ class RL_trainer:
 
         for episode in range(1000000):
 
-            learning_rate = 0.00006
-            V_lrn = 20  # Critic learning rate multiplier
+            learning_rate = 0.0001
+            V_lrn = 2  # Critic learning rate multiplier
             random_angle = np.pi/30
-            random_location = 0
+            learning_rate_discount = 1
 
             total_episode_reward = 0
 
@@ -115,6 +125,7 @@ class RL_trainer:
             target_mu_memory = []
             self.d_log_std = 0
             runtimes = []
+            episode_advantages = []
             sides = [-1, 1]
             random.shuffle(sides)
 
@@ -156,6 +167,7 @@ class RL_trainer:
                         target_value = reward + gamma * next_critic       # alive, or truncated at timeout
                     # Advantage: Was the move better than the Critic expected?
                     advantage_unclipped = target_value - V
+                    episode_advantages.append(advantage_unclipped)
                     advantage = np.clip(advantage_unclipped, -5.0, 5.0)
 
                     # --- THE BACKWARD PASS ---
@@ -188,14 +200,14 @@ class RL_trainer:
                     target_V_memory.append(target_V)
                     target_mu_memory.append(target_mu)
 
-                    batch_size = 32
+                    batch_size = 64
 
                     if len(states_memory) >= batch_size:
-                        self.NN_mu.backward(np.array(states_memory), np.array(target_mu_memory).reshape(-1, 1), learning_rate / batch_size)
-                        self.NN_V.backward(np.array(states_memory), np.array(target_V_memory).reshape(-1, 1), learning_rate * V_lrn / batch_size)
+                        self.NN_mu.backward(np.array(states_memory), np.array(target_mu_memory).reshape(-1, 1), learning_rate_discount * learning_rate / batch_size)
+                        self.NN_V.backward(np.array(states_memory), np.array(target_V_memory).reshape(-1, 1), learning_rate_discount * learning_rate * V_lrn / batch_size)
 
                         # Update exploration noise (entropy_coeff resists collapse to floor)
-                        self.log_std -= learning_rate * (self.d_log_std / batch_size - dynamic_entropy)
+                        self.log_std -= learning_rate_discount * learning_rate * (self.d_log_std / batch_size - dynamic_entropy)
                         self.log_std = np.clip(self.log_std, self.log_floor, self.log_ceiling)
 
                         states_memory = []
@@ -207,10 +219,12 @@ class RL_trainer:
 
             # Flush any remaining experience after both sides complete
             if len(states_memory) > 0:
-                self.NN_mu.backward(np.array(states_memory), np.array(target_mu_memory).reshape(-1, 1), learning_rate / batch_size)
-                self.NN_V.backward(np.array(states_memory), np.array(target_V_memory).reshape(-1, 1), learning_rate * V_lrn / batch_size)
-                self.log_std -= learning_rate * (self.d_log_std / len(states_memory) - dynamic_entropy)
+                self.NN_mu.backward(np.array(states_memory), np.array(target_mu_memory).reshape(-1, 1), learning_rate_discount * learning_rate / batch_size)
+                self.NN_V.backward(np.array(states_memory), np.array(target_V_memory).reshape(-1, 1), learning_rate_discount * learning_rate * V_lrn / batch_size)
+                self.log_std -= learning_rate_discount * learning_rate * (self.d_log_std / len(states_memory) - dynamic_entropy)
                 self.log_std = np.clip(self.log_std, self.log_floor, self.log_ceiling)
+
+            learning_rate_discount = np.clip(3 - 3 * total_episode_reward / 7200, 0.01, 1.0)
 
             print(f"Episode {episode} finished! Total Reward: {total_episode_reward:.2f}, runtime = {runtimes[0]}, {runtimes[1]}, advantage = {advantage:.2f}")
 
@@ -262,14 +276,20 @@ class RL_trainer:
             self.sync_target(tau=0.05)
             reward_history.append(total_episode_reward)
             log_std_history.append(self.log_std)
+            advantage_history.append(np.mean(np.abs(episode_advantages)) if episode_advantages else 0.0)
+            signed_advantage_history.append(np.mean(episode_advantages) if episode_advantages else 0.0)
 
             episodes = range(len(reward_history))
             line1.set_data(episodes, reward_history)
             line2.set_data(episodes, log_std_history)
+            line3.set_data(episodes, advantage_history)
+            line4.set_data(episodes, signed_advantage_history)
             ax1.relim()
             ax1.autoscale_view()
             ax2.relim()
             ax2.autoscale_view()
+            ax3.relim()
+            ax3.autoscale_view()
             fig.canvas.flush_events()
 
         self.NN_mu.theta_save(2)
