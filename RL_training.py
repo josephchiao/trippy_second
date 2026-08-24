@@ -35,8 +35,8 @@ class RL_trainer:
         """Max reward should be 1. Reward is based on how upright the pendulum is and how close the cart is to the center."""
 
         location_cf = 0.5
-        angle_cf = 1.5
-        time_reward = -1
+        angle_cf = 0.5
+        time_reward = 0
     
         reward = time_reward - angle_cf * math.cos(state[1]) + max(0, location_cf * (1 - 0.2 * abs(state[0])))
         return reward
@@ -113,7 +113,7 @@ class RL_trainer:
 
         for episode in range(1000000):
 
-            learning_rate = 0.00004
+            learning_rate = 0.0002
             # normal learning rate = 0.0001
 
             # if episode < 200:
@@ -121,7 +121,7 @@ class RL_trainer:
             # else:
             #     V_lrn = 1  # Critic learning rate multiplier
 
-            V_lrn = 1
+            V_lrn = 0.5
 
             learning_rate_discount = 1
 
@@ -164,7 +164,7 @@ class RL_trainer:
                     next_state = self.model.rk4_step()
                     reward = self.reward(next_state)
                     total_episode_reward += reward
-                    done = next_state[1] <= np.pi/2 or next_state[1] >= 3*np.pi/2 or t >= (max_runtime) * self.model.refresh_rate or abs(next_state[2]) > 100 or abs(next_state[3]) > 100 or abs(next_state[0]) > 100 or np.isnan(next_state).any()  # Check for failure conditions 
+                    done = next_state[1] <= np.pi/2 or next_state[1] >= 3*np.pi/2 or t >= (max_runtime) * self.model.refresh_rate or abs(next_state[2]) > 100 or abs(next_state[3]) > 100 or abs(next_state[0]) > 5 or np.isnan(next_state).any()  # Check for failure conditions 
 
                     normalized_next_state = self.normalize(next_state)
                     next_critic = self.NN_V_tgt.feedforward(normalized_next_state)[-1][0][0]
