@@ -5,8 +5,9 @@ import math
 from scipy.integrate import solve_ivp
 import random
 import physics
+from datetime import datetime
 
-init_log_std = 1  # Initial exploration noise level (log scale)
+init_log_std = 0  # Initial exploration noise level (log scale)
 
 class RL_trainer:
 
@@ -17,45 +18,46 @@ class RL_trainer:
         self.log_floor = -2
         self.log_ceiling = 3
         self.d_log_std = 0
-        self.NN_V = nn.NeuralNetwork((4, 16, 16, 1), [nn.ReLU, nn.ReLU, nn.linear], 'V_nn_library')
+        self.NN_V = nn.NeuralNetwork((4, 64, 64, 1), [nn.ReLU, nn.ReLU, nn.linear], 'V_nn_library')
         self.NN_mu = nn.NeuralNetwork((4, 16, 16, 1), [nn.ReLU, nn.ReLU, nn.sigmoid], 'mu_nn_library')
 
-        self.NN_V.theta_generate()
-        self.NN_mu.theta_generate()
+        # self.NN_V.theta_generate()
+        # self.NN_mu.theta_generate()
 
         self.NN_V.theta_recover()
         self.NN_mu.theta_recover()
 
-        self.NN_V_tgt = nn.NeuralNetwork((4, 16, 16, 1), [nn.ReLU, nn.ReLU, nn.linear], 'V_nn_library')
+        self.NN_V_tgt = nn.NeuralNetwork((4, 64, 64, 1), [nn.ReLU, nn.ReLU, nn.linear], 'V_nn_library')
         self.sync_target(hard=True)
 
     def reward(self, state):
 
         """Max reward should be 1. Reward is based on how upright the pendulum is and how close the cart is to the center."""
 
-        location_cf = 0
-        angle_cf = 1
-        time_reward = 0
+        location_cf = 0.4
+        angle_cf = 2.1
+        time_reward = -1.5
         special_angle_reward = 0
     
-        reward = (time_reward - angle_cf * math.cos(state[1]) + max(0, location_cf * (1 - 0.2 * abs(state[0]))) + special_angle_reward * (state[1] < np.pi + 0.01 and state[1] > np.pi - 0.01))
+        reward = (time_reward - angle_cf * math.cos(state[1]) + max(0, location_cf * (1 - 0.4 * abs(state[0]))) + special_angle_reward * (state[1] < np.pi + 0.01 and state[1] > np.pi - 0.01))
 
         return reward
 
     def normalize(self, state):
         """Normalize terms for the state to be readable by the neural network."""
+        return state
         return np.array([2/(1 + np.exp(-2 * state[0])) - 1, state[1], state[2], state[3]])
 
 
     def sync_target(self, hard=False, tau=0.05):
-            """Blend the live critic into the frozen target. hard=True copies outright."""
-            if hard:
-                self.NN_V_tgt.theta = [w.copy() for w in self.NN_V.theta]
-                self.NN_V_tgt.b     = [w.copy() for w in self.NN_V.b]
-            else:
-                for i in range(len(self.NN_V.theta)):
-                    self.NN_V_tgt.theta[i] = (1 - tau) * self.NN_V_tgt.theta[i] + tau * self.NN_V.theta[i]
-                    self.NN_V_tgt.b[i]     = (1 - tau) * self.NN_V_tgt.b[i]     + tau * self.NN_V.b[i]
+        """Blend the live critic into the frozen target. hard=True copies outright."""
+        if hard:
+            self.NN_V_tgt.theta = [w.copy() for w in self.NN_V.theta]
+            self.NN_V_tgt.b     = [w.copy() for w in self.NN_V.b]
+        else:
+            for i in range(len(self.NN_V.theta)):
+                self.NN_V_tgt.theta[i] = (1 - tau) * self.NN_V_tgt.theta[i] + tau * self.NN_V.theta[i]
+                self.NN_V_tgt.b[i]     = (1 - tau) * self.NN_V_tgt.b[i]     + tau * self.NN_V.b[i]
 
     def backward_std(self, action, mu, sigma, advantage):
         epsilon = 1e-12  # Small constant to prevent division by zero
@@ -88,8 +90,11 @@ class RL_trainer:
         signed_advantage_history = []
         fail_count = 0
 
+        start_time = datetime.now()
+
         plt.ion()
         fig, (ax1, ax2, ax3) = plt.subplots(3, 1, constrained_layout=True)
+        fig.suptitle(f'Run started: {start_time.strftime("%Y-%m-%d %H:%M:%S")}', fontsize=10)
         ax1.set_xlabel('Episode')
         ax1.set_ylabel('Reward')
         ax2.set_xlabel('Episode')
@@ -107,15 +112,23 @@ class RL_trainer:
         best_reward = 0
         second_best_reward = 0
         previously_saved = False  # don't let recovery load a stale checkpoint from a previous run
-        # rolling_counter = np.zeros(50) # Maybe we need???
 
         for episode in range(1000000):
 
-            learning_rate = 0.0001
-            V_lrn = 2  # Critic learning rate multiplier
-            random_angle = np.pi/30
+            learning_rate = 0.00002
+
+            # if episode < 80:
+            #     V_lrn = 50  # Critic learning rate multiplier
+            # else:
+            #     V_lrn = 1  # Critic learning rate multiplier
+
+            V_lrn = 4
+
             learning_rate_discount = 1
 
+            random_angle = np.pi/30
+            starting_location = 1
+            
             total_episode_reward = 0
 
             # Shared buffer across both sides so each batch mixes both starting configs.
@@ -135,7 +148,7 @@ class RL_trainer:
                 dynamic_entropy = max(-0.001, (-np.mean(reward_history[-100:])/2000 + 1) * 0.05)  # Sample a single noise value for this episode
 
             for side in sides:
-                self.model.state = [0, np.pi + side * random_angle, 0, 0]
+                self.model.state = [side * starting_location, np.pi + side * random_angle, 0, 0]
                 t = 0
                 done = False
                 while not done:
@@ -149,23 +162,19 @@ class RL_trainer:
                     mu = self.NN_mu.feedforward(normalized_state)[-1][0][0]
                     self.model.motor_force = (mu - 0.5) * 200 + np.exp(self.log_std) * np.random.randn()
 
-
-                    # --- THE PHYSICS ENGINE ---
-                    # The cart moves for 0.02 seconds using the chosen force
                     next_state = self.model.rk4_step()
                     reward = self.reward(next_state)
                     total_episode_reward += reward
-                    # has_nan = np.isnan(next_state).any()
-                    done = next_state[1] <= np.pi/2 or next_state[1] >= 3*np.pi/2 or t >= (max_runtime) * self.model.refresh_rate or abs(next_state[2]) > 100 or abs(next_state[3]) > 100
+                    done = next_state[1] <= np.pi/2 or next_state[1] >= 3*np.pi/2 or t >= (max_runtime) * self.model.refresh_rate or abs(next_state[2]) > 100 or abs(next_state[3]) > 100 or abs(next_state[0]) > 100 or np.isnan(next_state).any()  # Check for failure conditions 
 
                     normalized_next_state = self.normalize(next_state)
                     next_critic = self.NN_V_tgt.feedforward(normalized_next_state)[-1][0][0]
 
                     if done and t < (max_runtime) * self.model.refresh_rate:
-                        target_value = reward                             # true terminal: no future
+                        target_value = reward                             # advance terminal (no future)
                     else:
                         target_value = reward + gamma * next_critic       # alive, or truncated at timeout
-                    # Advantage: Was the move better than the Critic expected?
+
                     advantage_unclipped = target_value - V
                     episode_advantages.append(advantage_unclipped)
                     advantage = np.clip(advantage_unclipped, -5.0, 5.0)
@@ -183,10 +192,6 @@ class RL_trainer:
                         mu=mu,
                         sigma=np.exp(self.log_std)/200,
                         advantage=advantage)
-
-                    # Capping function
-                    # if abs(d_V) > 1.0: d_V = np.sign(d_V) * 1.0
-                    # if abs(d_mu) > 0.25: d_mu = np.sign(d_mu) * 0.25
 
                     # Move to the next frame
                     self.model.state = next_state
@@ -278,7 +283,7 @@ class RL_trainer:
             advantage_history.append(np.mean(np.abs(episode_advantages)) if episode_advantages else 0.0)
             signed_advantage_history.append(np.mean(episode_advantages) if episode_advantages else 0.0)
 
-            recent = np.mean(reward_history[-50:])
+            recent = np.mean(reward_history[-200:])
             learning_rate_discount = float(np.clip(3 - 3 * recent / 7200, 0.1, 1.0))
 
             episodes = range(len(reward_history))
