@@ -72,6 +72,19 @@ class RL_trainer:
         self.d_log_std += step_d_log_std
         
         return d_mu   
+
+    def backward_std_MC(self, actions, mus, sigmas, advantages):
+        epsilon = 1e-12  # Small constant to prevent division by zero
+        actions_discrepency = actions / 200 + 0.5 - mus
+
+        calibrated_advantages = advantages - np.mean(advantages)  # Center the advantages to have a mean of zero
+
+        d_mus = -calibrated_advantages * (actions_discrepency / (sigmas ** 2 + epsilon))
+        step_d_log_std = -advantages * ((actions_discrepency**2 / (sigmas ** 2 + epsilon)) - 1.0)
+        
+        self.d_log_std += np.sum(step_d_log_std)
+        
+        return d_mus
     
     def train(self, variance = 0, max_runtime = 60):
 
@@ -110,10 +123,11 @@ class RL_trainer:
         best_reward = 0
         second_best_reward = 0
         previously_saved = False  # don't let recovery load a stale checkpoint from a previous run
+        learning_rate_discount = 1
 
         for episode in range(1000000):
 
-            learning_rate = 0.0002
+            learning_rate = 0.0001
             # normal learning rate = 0.0001
 
             # if episode < 200:
@@ -121,9 +135,8 @@ class RL_trainer:
             # else:
             #     V_lrn = 1  # Critic learning rate multiplier
 
-            V_lrn = 0.5
+            V_lrn = 2
 
-            learning_rate_discount = 1
 
             random_angle = np.pi/30
             starting_location = 1
@@ -135,6 +148,10 @@ class RL_trainer:
             states_memory = []
             target_V_memory = []
             target_mu_memory = []
+
+            mu_memory = []
+            disc_memory = []
+            adv_memory = []
             self.d_log_std = 0
             runtimes = []
             episode_advantages = []
@@ -186,27 +203,36 @@ class RL_trainer:
 
                     # 2. Backprop for the Actor
                     # This function updates self.d_log_std internally and returns the gradient for mu
-                    d_mu = self.backward_std(
-                        action=self.model.motor_force,
-                        mu=mu,
-                        sigma=np.exp(self.log_std)/200,
-                        advantage=advantage)
+                    # d_mu = self.backward_std(
+                    #     action=self.model.motor_force,
+                    #     mu=mu,
+                    #     sigma=np.exp(self.log_std)/200,
+                    #     advantage=advantage)
 
                     # Move to the next frame
                     self.model.state = next_state
 
                     states_memory.append(normalized_state)
                     target_V = V + advantage_unclipped  # Use unclipped advantage for the Critic target to avoid biasing the Critic towards underestimating the value of states 
-                    target_mu = mu - d_mu
-                    # target_mu = np.clip(target_mu, 0.05, 0.95)
                     target_V = np.clip(target_V, -100, 105.0)
 
-                    target_V_memory.append(target_V)
-                    target_mu_memory.append(target_mu)
+                    mu_memory.append(mu)
+                    disc_memory.append(self.model.motor_force / 200 + 0.5 - mu)
+                    adv_memory.append(advantage)
+
 
                     batch_size = 64
 
                     if len(states_memory) >= batch_size:
+
+                        d_mu = self.backward_std_MC(
+                            actions=np.array(disc_memory),
+                            mus=np.array(mu_memory),
+                            sigmas=np.exp(self.log_std)/200,
+                            advantages=np.array(adv_memory))
+
+                        target_mu_memory = np.array(mu_memory) - d_mu
+
                         self.NN_mu.backward(np.array(states_memory), np.array(target_mu_memory).reshape(-1, 1), learning_rate_discount * learning_rate / batch_size)
                         self.NN_V.backward(np.array(states_memory), np.array(target_V_memory).reshape(-1, 1),  learning_rate * V_lrn / batch_size)
 
@@ -217,12 +243,23 @@ class RL_trainer:
                         states_memory = []
                         target_V_memory = []
                         target_mu_memory = []
+                        disc_memory = []
+                        adv_memory = []
                         self.d_log_std = 0
 
                 runtimes.append(t)
 
             # Flush any remaining experience after both sides complete
             if len(states_memory) > 0:
+
+                d_mu = self.backward_std_MC(
+                    actions=np.array(disc_memory),
+                    mus=np.array(mu_memory),
+                    sigmas=np.exp(self.log_std)/200,
+                    advantages=np.array(adv_memory))
+
+                target_mu_memory = np.array(mu_memory) - d_mu
+
                 self.NN_mu.backward(np.array(states_memory), np.array(target_mu_memory).reshape(-1, 1), learning_rate_discount * learning_rate / batch_size)
                 self.NN_V.backward(np.array(states_memory), np.array(target_V_memory).reshape(-1, 1), learning_rate * V_lrn / batch_size)
                 self.log_std -= learning_rate_discount * learning_rate * (self.d_log_std / len(states_memory) - dynamic_entropy)
