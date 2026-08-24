@@ -75,12 +75,11 @@ class RL_trainer:
 
     def backward_std_MC(self, actions, mus, sigmas, advantages):
         epsilon = 1e-12  # Small constant to prevent division by zero
-        actions_discrepency = actions / 200 + 0.5 - mus
 
         calibrated_advantages = advantages - np.mean(advantages)  # Center the advantages to have a mean of zero
 
-        d_mus = -calibrated_advantages * (actions_discrepency / (sigmas ** 2 + epsilon))
-        step_d_log_std = -advantages * ((actions_discrepency**2 / (sigmas ** 2 + epsilon)) - 1.0)
+        d_mus = -calibrated_advantages * (actions / (sigmas ** 2 + epsilon))
+        step_d_log_std = -calibrated_advantages * ((actions**2 / (sigmas ** 2 + epsilon)) - 1.0)
         
         self.d_log_std += np.sum(step_d_log_std)
         
@@ -215,6 +214,7 @@ class RL_trainer:
                     states_memory.append(normalized_state)
                     target_V = V + advantage_unclipped  # Use unclipped advantage for the Critic target to avoid biasing the Critic towards underestimating the value of states 
                     target_V = np.clip(target_V, -100, 105.0)
+                    target_V_memory.append(target_V)
 
                     mu_memory.append(mu)
                     disc_memory.append(self.model.motor_force / 200 + 0.5 - mu)
@@ -245,12 +245,13 @@ class RL_trainer:
                         target_mu_memory = []
                         disc_memory = []
                         adv_memory = []
+                        mu_memory = []
                         self.d_log_std = 0
 
                 runtimes.append(t)
 
             # Flush any remaining experience after both sides complete
-            if len(states_memory) > 0:
+            if len(states_memory) > 16: # Only flush if we have a reasonable amount of data to avoid overfitting to a tiny batch
 
                 d_mu = self.backward_std_MC(
                     actions=np.array(disc_memory),
