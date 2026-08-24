@@ -34,13 +34,11 @@ class RL_trainer:
 
         """Max reward should be 1. Reward is based on how upright the pendulum is and how close the cart is to the center."""
 
-        location_cf = 0.4
-        angle_cf = 2.1
-        time_reward = -1.5
-        special_angle_reward = 0
+        location_cf = 0.5
+        angle_cf = 1.5
+        time_reward = -1
     
-        reward = (time_reward - angle_cf * math.cos(state[1]) + max(0, location_cf * (1 - 0.4 * abs(state[0]))) + special_angle_reward * (state[1] < np.pi + 0.01 and state[1] > np.pi - 0.01))
-
+        reward = time_reward - angle_cf * math.cos(state[1]) + max(0, location_cf * (1 - 0.2 * abs(state[0])))
         return reward
 
     def normalize(self, state):
@@ -115,14 +113,15 @@ class RL_trainer:
 
         for episode in range(1000000):
 
-            learning_rate = 0.00002
+            learning_rate = 0.00004
+            # normal learning rate = 0.0001
 
-            # if episode < 80:
+            # if episode < 200:
             #     V_lrn = 50  # Critic learning rate multiplier
             # else:
             #     V_lrn = 1  # Critic learning rate multiplier
 
-            V_lrn = 4
+            V_lrn = 1
 
             learning_rate_discount = 1
 
