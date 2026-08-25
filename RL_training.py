@@ -57,15 +57,16 @@ class RL_trainer:
 
         """Max reward should be 1. Reward is based on how upright the pendulum is and how close the cart is to the center."""
 
-        location_cf = 0.5   # Weight on staying near x = 0
-        angle_cf = 0.5      # Weight on staying upright (angle = pi)
+        location_cf = 0.2   # Weight on staying near x = 0
+        spl_location_cf = 0.1  # Weight on staying near x = 0 when the cart is far away
+        angle_cf = 0.7      # Weight on staying upright (angle = pi)
         time_reward = 0     # Flat per-frame bonus; positive rewards survival, negative penalizes stalling
 
         # -cos(angle) peaks at +1 upright and bottoms at -1 hanging down.
         # The location term decays linearly with |x| and is floored at 0 so a
         # far-away cart is merely unrewarded rather than heavily punished.
         # reward = time_reward - angle_cf * math.cos(state[1]) + max(0, location_cf * (1 - 0.3 * abs(state[0])))
-        reward = time_reward - angle_cf * math.cos(state[1]) + location_cf * 0.5 / (0.5 + abs(state[0]))  # A hyperbolic decay that is smooth and never hits zero
+        reward = time_reward - angle_cf * math.cos(state[1]) + location_cf * 0.5 / (0.5 + abs(state[0])) + spl_location_cf * (abs(state[0]) < 0.1)  # A hyperbolic decay that is smooth and never hits zero
         return reward
 
     def normalize(self, state):
@@ -196,7 +197,7 @@ class RL_trainer:
             #     V_lrn = 1  # Critic learning rate multiplier
 
             V_lrn = 3  # Critic learns faster than the actor so its targets stay ahead of the policy
-
+    
 
             random_angle = np.pi/30   # Fixed tilt off vertical at episode start
             starting_location = 1     # Fixed cart offset from center at episode start
@@ -291,7 +292,7 @@ class RL_trainer:
                     # Flush the batch mid-episode once enough frames have accumulated.
                     if len(states_memory) >= batch_size:
 
-                        if abs(np.mean(adv_memory)) > 2.0:
+                        if abs(np.mean(adv_memory)) > 2.0 or episode < 1000:
                             self.excess_advantage_count += 1
                         else:
                             d_mu = self.backward_std_MC(
@@ -326,7 +327,7 @@ class RL_trainer:
             # Flush any remaining experience after both sides complete
             if len(states_memory) > 16: # Only flush if we have a reasonable amount of data to avoid overfitting to a tiny batch
 
-                if abs(np.mean(adv_memory)) > 2.0:
+                if abs(np.mean(adv_memory)) > 2.0 or episode < 1000:
                     self.excess_advantage_count += 1
                 else:
                     d_mu = self.backward_std_MC(
