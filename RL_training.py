@@ -275,7 +275,7 @@ class RL_trainer:
                     total_episode_reward += reward
                     # Fail conditions: pendulum past horizontal, time cap hit, velocities or
                     # cart position running away, or the integrator producing NaNs.
-                    done = next_state[1] <= np.pi/2 or next_state[1] >= 3*np.pi/2 or t >= (max_runtime) * self.model.refresh_rate or abs(next_state[2]) > 100 or abs(next_state[3]) > 100 or abs(next_state[0]) > 20 or np.isnan(next_state).any()  # Check for failure conditions 
+                    done = next_state[1] <= np.pi/2 or next_state[1] >= 3*np.pi/2 or t >= (max_runtime) * self.model.refresh_rate or abs(next_state[2]) > 100 or abs(next_state[3]) > 100 or abs(next_state[0]) > 3 or np.isnan(next_state).any()  # Check for failure conditions 
 
                     normalized_next_state = self.normalize(next_state)
                     next_critic = self.NN_V_tgt.feedforward(normalized_next_state)[-1][0][0]
@@ -423,12 +423,12 @@ class RL_trainer:
                 print('Periodic Save to 2!')
 
             # --- Policy collapse detection ---
-            if total_episode_reward < max(20, second_best_reward * 0.2):  # An episode this bad counts as a failure; the max() keeps the bar meaningful early on
+            if total_episode_reward < max(20, second_best_reward * 0.95):  # An episode this bad counts as a failure; the max() keeps the bar meaningful early on
                 fail_count += 1
             else:
                 fail_count = 0  # Any decent episode proves the policy is still viable
 
-            if fail_count >= 200 and previously_saved and False:  # A long failure streak means the policy really has collapsed: roll back
+            if fail_count >= 50 and previously_saved:  # A long failure streak means the policy really has collapsed: roll back
                 self.NN_mu.theta_recover(i = 1)
                 self.NN_V.theta_recover(i = 1)
                 self.sync_target(hard=True)  # Target would otherwise still hold the collapsed critic
@@ -446,7 +446,7 @@ class RL_trainer:
             # Anneal the actor's learning rate as the running average approaches the
             # 7200-reward ceiling (2 sides * 60 s * 60 fps at ~1 reward per frame).
             recent = np.mean(reward_history[-200:])
-            learning_rate_discount = float(np.clip(20 - 20 * recent / max_runtime, 0.1, 1.0))
+            learning_rate_discount = float(np.clip(20 - 20 * recent / max_runtime * self.model.refresh_rate, 0.1, 1.0))
 
             #region Live plot update
             # Redraw the diagnostics with this episode's data appended
