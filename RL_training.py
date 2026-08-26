@@ -49,6 +49,9 @@ class RL_trainer:
         self.NN_V.theta_recover()
         self.NN_mu.theta_recover()
 
+
+        self.actor_scale = 1.0 / (np.exp(init_log_std) / 200) ** 2   # = 40,000 at init_log_std = 0
+
         # Target critic: same architecture, weights seeded from the live critic.
         self.NN_V_tgt = nn.NeuralNetwork((4, 64, 64, 1), [nn.ReLU, nn.ReLU, nn.linear], 'V_nn_library')
         self.sync_target(hard=True)
@@ -68,7 +71,7 @@ class RL_trainer:
         # far-away cart is merely unrewarded rather than heavily punished.
         
         # reward = time_reward - angle_cf * math.cos(state[1]) + max(0, location_cf * (1 - 0.3 * abs(state[0])))
-        reward = time_reward - angle_cf * math.cos(state[1]) + location_cf * 0.5 / (0.5 + abs(state[0])) + spl_location_cf * (abs(state[0]) < 0.1) - effort_reward * (self.model.motor_force / 100) ** 2   # A hyperbolic decay that is smooth and never hits zero
+        reward = time_reward - angle_cf * math.cos(state[1]) + location_cf * 0.5 / (0.5 + abs(state[0])) + spl_location_cf * (abs(state[0]) < 0.1) + effort_reward * (1 - self.model.motor_force / 100) ** 2   # A hyperbolic decay that is smooth and never hits zero
         
         return reward
 
@@ -132,7 +135,7 @@ class RL_trainer:
 
         calibrated_advantages = advantages - np.mean(advantages)  # Center the advantages to have a mean of zero
 
-        d_mus = -calibrated_advantages * (actions / (sigmas ** 2 + epsilon))
+        d_mus = -calibrated_advantages * actions * self.actor_scale
         step_d_log_std = -calibrated_advantages * ((actions**2 / (sigmas ** 2 + epsilon)) - 1.0)
 
         self.d_log_std += np.sum(step_d_log_std)
@@ -199,12 +202,12 @@ class RL_trainer:
             # else:
             #     V_lrn = 3  # Critic learning rate multiplier
 
-            V_lrn = 10  # Critic learns faster than the actor so its targets stay ahead of the policy
+            V_lrn = 3  # Critic learns faster than the actor so its targets stay ahead of the policy
     
 
             # random_angle = np.pi/30   # Fixed tilt off vertical at episode start
-            random_angle = 0
-            starting_location = 1.5     # Fixed cart offset from center at episode start
+            random_angle = np.random.normal(0, np.pi/15)   # Random tilt off vertical at episode start
+            starting_location = np.random.normal(0, 1.5)     # Fixed cart offset from center at episode start
             
             total_episode_reward = 0
 
@@ -301,7 +304,7 @@ class RL_trainer:
                     # Flush the batch mid-episode once enough frames have accumulated.
                     if len(states_memory) >= batch_size:
 
-                        if abs(np.mean(adv_memory)) > 2.0:
+                        if abs(np.mean(adv_memory)) > 3.5:
                             self.excess_advantage_count += 1
                         else:
                             d_mu = self.backward_std_MC(
@@ -336,7 +339,7 @@ class RL_trainer:
             # Flush any remaining experience after both sides complete
             if len(states_memory) > 16: # Only flush if we have a reasonable amount of data to avoid overfitting to a tiny batch
 
-                if abs(np.mean(adv_memory)) > 2.0:
+                if abs(np.mean(adv_memory)) > 3.5:
                     self.excess_advantage_count += 1
                 else:
                     d_mu = self.backward_std_MC(
