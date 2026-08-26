@@ -24,7 +24,8 @@ import random
 import physics
 from datetime import datetime
 
-init_log_std = 0  # Initial exploration noise level (log scale); exp(0) = 1 N of noise
+init_log_std = -1.5  # Initial exploration noise level (log scale); exp(0) = 1 N of noise
+adv_clip_limit = 25.0  # Advantage magnitude cap; frames beyond it are said to "bind" the clip
 
 
 class RL_trainer:
@@ -50,7 +51,7 @@ class RL_trainer:
         self.NN_mu.theta_recover()
 
 
-        self.actor_scale = 1.0 / (np.exp(init_log_std) / 200) ** 2   # = 40,000 at init_log_std = 0
+        self.actor_scale = 10000
 
         # Target critic: same architecture, weights seeded from the live critic.
         self.NN_V_tgt = nn.NeuralNetwork((4, 64, 64, 1), [nn.ReLU, nn.ReLU, nn.linear], 'V_nn_library')
@@ -60,18 +61,18 @@ class RL_trainer:
 
         """Max reward should be 1. Reward is based on how upright the pendulum is and how close the cart is to the center."""
 
-        location_cf = 0.05      # Weight on staying near x = 0
+        location_cf = 0.2      # Weight on staying near x = 0
         spl_location_cf = 0   # Weight on staying near x = 0 when the cart is far away
-        angle_cf = 0.9          # Weight on staying upright (angle = pi)
+        angle_cf = 0.8          # Weight on staying upright (angle = pi)
         time_reward = 0       # Flat per-frame bonus; positive rewards survival, negative penalizes stalling
-        effort_reward = 0.05
+        effort_reward = 0
 
         # -cos(angle) peaks at +1 upright and bottoms at -1 hanging down.
         # The location term decays linearly with |x| and is floored at 0 so a
         # far-away cart is merely unrewarded rather than heavily punished.
         
         # reward = time_reward - angle_cf * math.cos(state[1]) + max(0, location_cf * (1 - 0.3 * abs(state[0])))
-        reward = time_reward - angle_cf * math.cos(state[1]) + location_cf * 0.5 / (0.5 + abs(state[0])) + spl_location_cf * (abs(state[0]) < 0.1) + effort_reward * (1 - self.model.motor_force / 100) ** 2   # A hyperbolic decay that is smooth and never hits zero
+        reward = time_reward - angle_cf * math.cos(state[1]) + location_cf * 0.5 / (0.5 + abs(state[0])) + spl_location_cf * (abs(state[0]) < 0.1) + effort_reward * (1 - (self.model.motor_force / 100) ** 2)   # A hyperbolic decay that is smooth and never hits zero
         
         return reward
 
@@ -161,6 +162,9 @@ class RL_trainer:
         log_std_history = []
         advantage_history = []
         signed_advantage_history = []
+        clip_rate_history = []   # Fraction of frames per episode where the advantage clip bound
+        best_episodes = []       # Episode indices where a new best reward was set
+        best_rewards = []        # The rewards at those episodes, for the plot highlight
         fail_count = 0  # Consecutive poor episodes; triggers rollback once high enough
 
         start_time = datetime.now()
@@ -168,7 +172,7 @@ class RL_trainer:
         #region display setup
         # --- Live diagnostics: reward, exploration noise, and advantage per episode ---
         plt.ion()
-        fig, (ax1, ax2, ax3) = plt.subplots(3, 1, constrained_layout=True)
+        fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, constrained_layout=True)
         fig.suptitle(f'Run started: {start_time.strftime("%Y-%m-%d %H:%M:%S")}', fontsize=10)
         ax1.set_xlabel('Episode')
         ax1.set_ylabel('Reward')
@@ -176,14 +180,24 @@ class RL_trainer:
         ax2.set_ylabel('Log Std')
         ax3.set_xlabel('Episode')
         ax3.set_ylabel('Mean Advantage')
+        ax4.set_xlabel('Episode')
+        ax4.set_ylabel('Clip Bind %')
         ax1.grid(True, alpha=0.3)
         ax2.grid(True, alpha=0.3)
         ax3.grid(True, alpha=0.3)
+        ax4.grid(True, alpha=0.3)
         line1, = ax1.plot([], [])
+        # Stars mark the episodes that set a new best reward; the dashed line is the
+        # running best, so a flat stretch reads as "no progress since here".
+        line_best, = ax1.plot([], [], linestyle='--', drawstyle='steps-post', color='0.6', lw=1, zorder=2)
+        marker_best, = ax1.plot([], [], linestyle='none', marker='*', markersize=11,
+                                color='tab:red', label='new max', zorder=3)
+        ax1.legend(loc='upper left', fontsize='small')
         line2, = ax2.plot([], [])
         line3, = ax3.plot([], [], label='|advantage|')  # Magnitude: how wrong the critic is
         line4, = ax3.plot([], [], label='signed')       # Sign: whether it over- or under-estimates
         ax3.legend(loc='upper right', fontsize='small')
+        line5, = ax4.plot([], [], color='tab:purple')   # How often the advantage clip binds
         # endregion
 
         best_reward = 0
@@ -193,7 +207,7 @@ class RL_trainer:
 
         for episode in range(1000000):
 
-            learning_rate = 0.0001
+            learning_rate = 0.00005
             # normal learning rate = 0.0001
 
             # # Warm-up variant: let the critic race ahead early, then even out.
@@ -202,7 +216,7 @@ class RL_trainer:
             # else:
             #     V_lrn = 3  # Critic learning rate multiplier
 
-            V_lrn = 3  # Critic learns faster than the actor so its targets stay ahead of the policy
+            V_lrn = 2  # Critic learns faster than the actor so its targets stay ahead of the policy
     
 
             # random_angle = np.pi/30   # Fixed tilt off vertical at episode start
@@ -223,6 +237,8 @@ class RL_trainer:
             self.d_log_std = 0
             runtimes = []           # Frames survived on each side
             episode_advantages = [] # Unclipped advantages, for the diagnostics plot only
+            clip_bind_count = 0     # Frames whose advantage hit the clip limit
+            frame_count = 0         # Frames seen this episode, for the bind rate
             sides = [-1, 1]
             random.shuffle(sides)
 
@@ -259,7 +275,7 @@ class RL_trainer:
                     total_episode_reward += reward
                     # Fail conditions: pendulum past horizontal, time cap hit, velocities or
                     # cart position running away, or the integrator producing NaNs.
-                    done = next_state[1] <= np.pi/2 or next_state[1] >= 3*np.pi/2 or t >= (max_runtime) * self.model.refresh_rate or abs(next_state[2]) > 100 or abs(next_state[3]) > 100 or abs(next_state[0]) > 5 or np.isnan(next_state).any()  # Check for failure conditions 
+                    done = next_state[1] <= np.pi/2 or next_state[1] >= 3*np.pi/2 or t >= (max_runtime) * self.model.refresh_rate or abs(next_state[2]) > 100 or abs(next_state[3]) > 100 or abs(next_state[0]) > 20 or np.isnan(next_state).any()  # Check for failure conditions 
 
                     normalized_next_state = self.normalize(next_state)
                     next_critic = self.NN_V_tgt.feedforward(normalized_next_state)[-1][0][0]
@@ -271,7 +287,10 @@ class RL_trainer:
 
                     advantage_unclipped = target_value - V
                     episode_advantages.append(advantage_unclipped)
-                    advantage = np.clip(advantage_unclipped, -5.0, 5.0)  # Keep one bad frame from dominating the batch
+                    advantage = np.clip(advantage_unclipped, -adv_clip_limit, adv_clip_limit)  # Keep one bad frame from dominating the batch
+                    frame_count += 1
+                    if abs(advantage_unclipped) > adv_clip_limit:
+                        clip_bind_count += 1  # The clip actually bound on this frame
 
                     # --- THE BACKWARD PASS ---
                     # Critic error (Mean Squared Error):
@@ -360,7 +379,8 @@ class RL_trainer:
                 self.NN_V.backward(np.array(states_memory), np.array(target_V_memory).reshape(-1, 1), learning_rate * V_lrn / batch_size)
 
 
-            print(f"Episode {episode} finished! Total Reward: {total_episode_reward:.2f}, runtime = {runtimes[0]}, {runtimes[1]}, excess_advantage_count = {self.excess_advantage_count}")
+            clip_rate = clip_bind_count / frame_count if frame_count else 0.0
+            print(f"Episode {episode} finished! Total Reward: {total_episode_reward:.2f}, runtime = {runtimes[0]}, {runtimes[1]}, excess_advantage_count = {self.excess_advantage_count}, clip_bind_rate = {clip_rate:.2%} ({clip_bind_count}/{frame_count})")
             self.excess_advantage_count = 0  # Reset for the next episode
 
             # --- Checkpointing ---
@@ -369,10 +389,14 @@ class RL_trainer:
             if episode == 0:
                 best_reward = total_episode_reward
                 second_best_reward = total_episode_reward
+                best_episodes.append(episode)
+                best_rewards.append(total_episode_reward)
             
             elif total_episode_reward >= best_reward and total_episode_reward <= best_reward * 2 or episode == 0:  # Only consider it a new best if it's not an outlier that might be a lucky fluke
                 second_best_reward = best_reward
                 best_reward = total_episode_reward
+                best_episodes.append(episode)
+                best_rewards.append(total_episode_reward)
                 self.NN_mu.theta_backup()  # slot0 (old best) -> slot1 before overwriting
                 self.NN_V.theta_backup()  # slot0 (old best) -> slot1 before overwriting
                 self.NN_mu.theta_save()    # current weights -> slot0
@@ -417,11 +441,12 @@ class RL_trainer:
             log_std_history.append(self.log_std)
             advantage_history.append(np.mean(np.abs(episode_advantages)) if episode_advantages else 0.0)
             signed_advantage_history.append(np.mean(episode_advantages) if episode_advantages else 0.0)
+            clip_rate_history.append(clip_bind_count / frame_count if frame_count else 0.0)
 
             # Anneal the actor's learning rate as the running average approaches the
             # 7200-reward ceiling (2 sides * 60 s * 60 fps at ~1 reward per frame).
             recent = np.mean(reward_history[-200:])
-            learning_rate_discount = float(np.clip(3 - 3 * recent / 7200, 0.1, 1.0))
+            learning_rate_discount = float(np.clip(20 - 20 * recent / max_runtime, 0.1, 1.0))
 
             #region Live plot update
             # Redraw the diagnostics with this episode's data appended
@@ -430,12 +455,19 @@ class RL_trainer:
             line2.set_data(episodes, log_std_history)
             line3.set_data(episodes, advantage_history)
             line4.set_data(episodes, signed_advantage_history)
+            line5.set_data(episodes, [100 * r for r in clip_rate_history])
+            marker_best.set_data(best_episodes, best_rewards)
+            # Step-style running best: hold each record until the next one replaces it
+            line_best.set_data(list(best_episodes) + [len(reward_history) - 1],
+                               list(best_rewards) + [best_rewards[-1] if best_rewards else 0])
             ax1.relim()
             ax1.autoscale_view()
             ax2.relim()
             ax2.autoscale_view()
             ax3.relim()
             ax3.autoscale_view()
+            ax4.relim()
+            ax4.autoscale_view()
             fig.canvas.flush_events()
             #endregion 
 
