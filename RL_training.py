@@ -220,8 +220,8 @@ class RL_trainer:
     
 
             # random_angle = np.pi/30   # Fixed tilt off vertical at episode start
-            random_angle = np.random.normal(0, np.pi/15)   # Random tilt off vertical at episode start
-            starting_location = np.random.normal(0, 1.5)     # Fixed cart offset from center at episode start
+            random_angle = np.clip(np.random.normal(0, np.pi/15), -np.pi/10, np.pi/10)   # Random tilt off vertical at episode start
+            starting_location = np.clip(np.random.normal(0, 1.5), -2.5, 2.5)     # Fixed cart offset from center at episode start
             
             total_episode_reward = 0
 
@@ -240,7 +240,7 @@ class RL_trainer:
             clip_bind_count = 0     # Frames whose advantage hit the clip limit
             frame_count = 0         # Frames seen this episode, for the bind rate
             sides = [-1, 1]
-            random.shuffle(sides)
+            # random.shuffle(sides)
 
             # Entropy bonus coefficient: high while reward is low to keep exploring,
             # tapering toward zero (and slightly negative) as the policy gets good.
@@ -423,7 +423,7 @@ class RL_trainer:
                 print('Periodic Save to 2!')
 
             # --- Policy collapse detection ---
-            if total_episode_reward < max(20, second_best_reward * 0.95):  # An episode this bad counts as a failure; the max() keeps the bar meaningful early on
+            if total_episode_reward < max(20, second_best_reward * 0.2) and False:  # An episode this bad counts as a failure; the max() keeps the bar meaningful early on
                 fail_count += 1
             else:
                 fail_count = 0  # Any decent episode proves the policy is still viable
@@ -446,7 +446,7 @@ class RL_trainer:
             # Anneal the actor's learning rate as the running average approaches the
             # 7200-reward ceiling (2 sides * 60 s * 60 fps at ~1 reward per frame).
             recent = np.mean(reward_history[-200:])
-            learning_rate_discount = float(np.clip(20 - 20 * recent / max_runtime * self.model.refresh_rate, 0.1, 1.0))
+            learning_rate_discount = float(np.clip(20 - 20 * recent / (max_runtime * self.model.refresh_rate), 0.1, 1.0))
 
             #region Live plot update
             # Redraw the diagnostics with this episode's data appended
