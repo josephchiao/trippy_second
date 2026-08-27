@@ -3,11 +3,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 import math
 from scipy.integrate import solve_ivp
-import redone_legacy
 import random
 import physics
 
-init_log_std = 0  # Initial exploration noise level (log scale)
+init_log_std = 1  # Initial exploration noise level (log scale)
 
 class RL_trainer:
 
@@ -18,30 +17,45 @@ class RL_trainer:
         self.log_floor = -2
         self.log_ceiling = 3
         self.d_log_std = 0
-        self.NN_V = nn.NeuralNetwork((4, 16, 16, 1), [nn.ReLU, nn.ReLU, nn.linear], 'V_nn_library')
+        self.NN_V = nn.NeuralNetwork((4, 64, 64, 1), [nn.ReLU, nn.ReLU, nn.linear], 'V_nn_library')
         self.NN_mu = nn.NeuralNetwork((4, 16, 16, 1), [nn.ReLU, nn.ReLU, nn.sigmoid], 'mu_nn_library')
 
         self.NN_V.theta_generate()
         self.NN_mu.theta_generate()
 
-        self.X_V = self.NN_V.theta_recover()
-        self.X_mu = self.NN_mu.theta_recover()
+        self.NN_V.theta_recover()
+        self.NN_mu.theta_recover()
+
+        self.NN_V_tgt = nn.NeuralNetwork((4, 64, 64, 1), [nn.ReLU, nn.ReLU, nn.linear], 'V_nn_library')
+        self.sync_target(hard=True)
 
     def reward(self, state):
 
         """Max reward should be 1. Reward is based on how upright the pendulum is and how close the cart is to the center."""
 
-        location_cf = 0.1
-        angle_cf = 0.7
-        time_reward = 0.2
+        location_cf = 0
+        angle_cf = 1
+        time_reward = 0
+        special_angle_reward = 0
     
-        reward = (time_reward - angle_cf * math.cos(state[1]) + location_cf/(4*abs(state[0])+1))
+        reward = (time_reward - angle_cf * math.cos(state[1]) + max(0, location_cf * (1 - 0.2 * abs(state[0]))) + special_angle_reward * (state[1] < np.pi + 0.01 and state[1] > np.pi - 0.01))
 
         return reward
 
     def normalize(self, state):
         """Normalize terms for the state to be readable by the neural network."""
-        return np.array([2/(1 + np.exp(-2 * state[0])) - 1, state[1], state[2], state[3]])
+        return np.array([state[0], state[1]-np.pi, state[2], state[3]])
+
+
+    def sync_target(self, hard=False, tau=0.05):
+            """Blend the live critic into the frozen target. hard=True copies outright."""
+            if hard:
+                self.NN_V_tgt.theta = [w.copy() for w in self.NN_V.theta]
+                self.NN_V_tgt.b     = [w.copy() for w in self.NN_V.b]
+            else:
+                for i in range(len(self.NN_V.theta)):
+                    self.NN_V_tgt.theta[i] = (1 - tau) * self.NN_V_tgt.theta[i] + tau * self.NN_V.theta[i]
+                    self.NN_V_tgt.b[i]     = (1 - tau) * self.NN_V_tgt.b[i]     + tau * self.NN_V.b[i]
 
     def backward_std(self, action, mu, sigma, advantage):
         epsilon = 1e-12  # Small constant to prevent division by zero
@@ -70,16 +84,26 @@ class RL_trainer:
         gamma = 0.99  # Discount factor (how much we care about the future)
         reward_history = []
         log_std_history = []
+        advantage_history = []
+        signed_advantage_history = []
         fail_count = 0
 
         plt.ion()
-        fig, (ax1, ax2) = plt.subplots(2, 1)
+        fig, (ax1, ax2, ax3) = plt.subplots(3, 1, constrained_layout=True)
         ax1.set_xlabel('Episode')
         ax1.set_ylabel('Reward')
         ax2.set_xlabel('Episode')
         ax2.set_ylabel('Log Std')
+        ax3.set_xlabel('Episode')
+        ax3.set_ylabel('Mean Advantage')
+        ax1.grid(True, alpha=0.3)
+        ax2.grid(True, alpha=0.3)
+        ax3.grid(True, alpha=0.3)
         line1, = ax1.plot([], [])
         line2, = ax2.plot([], [])
+        line3, = ax3.plot([], [], label='|advantage|')
+        line4, = ax3.plot([], [], label='signed')
+        ax3.legend(loc='upper right', fontsize='small')
         best_reward = 0
         second_best_reward = 0
         previously_saved = False  # don't let recovery load a stale checkpoint from a previous run
@@ -88,9 +112,9 @@ class RL_trainer:
         for episode in range(1000000):
 
             learning_rate = 0.0001
-            
-            random_angle = np.pi/120
-            random_location = 0
+            V_lrn = 2  # Critic learning rate multiplier
+            random_angle = np.pi/30
+            learning_rate_discount = 1
 
             total_episode_reward = 0
 
@@ -101,8 +125,14 @@ class RL_trainer:
             target_mu_memory = []
             self.d_log_std = 0
             runtimes = []
+            episode_advantages = []
             sides = [-1, 1]
             random.shuffle(sides)
+
+            if episode < 100:
+                dynamic_entropy = 0.05 # Sample a single noise value for this episode
+            else:       
+                dynamic_entropy = max(-0.001, (-np.mean(reward_history[-100:])/2000 + 1) * 0.05)  # Sample a single noise value for this episode
 
             for side in sides:
                 self.model.state = [0, np.pi + side * random_angle, 0, 0]
@@ -119,7 +149,6 @@ class RL_trainer:
                     mu = self.NN_mu.feedforward(normalized_state)[-1][0][0]
                     self.model.motor_force = (mu - 0.5) * 200 + np.exp(self.log_std) * np.random.randn()
 
-                    critic = V
 
                     # --- THE PHYSICS ENGINE ---
                     # The cart moves for 0.02 seconds using the chosen force
@@ -129,22 +158,16 @@ class RL_trainer:
                     # has_nan = np.isnan(next_state).any()
                     done = next_state[1] <= np.pi/2 or next_state[1] >= 3*np.pi/2 or t >= (max_runtime) * self.model.refresh_rate or abs(next_state[2]) > 100 or abs(next_state[3]) > 100
 
-                    # --- THE TARGET CALCULATION ---
-                    # Value of the state we just landed in
-                    if done:
-                        target_value = reward # If we died, there is no future.
-                        if t < (max_runtime) * self.model.refresh_rate + 1:
-                            target_value = -50.0   # Punish death before time ends
-                        # if t < 30:
-                        #     target_value = -100.0  # Punish early death heavily
+                    normalized_next_state = self.normalize(next_state)
+                    next_critic = self.NN_V_tgt.feedforward(normalized_next_state)[-1][0][0]
 
+                    if done and t < (max_runtime) * self.model.refresh_rate:
+                        target_value = reward                             # true terminal: no future
                     else:
-                        normalized_next_state = self.normalize(next_state)
-                        next_critic = self.NN_V.feedforward(normalized_next_state)[-1][0]
-                        target_value = reward + gamma * next_critic
-
+                        target_value = reward + gamma * next_critic       # alive, or truncated at timeout
                     # Advantage: Was the move better than the Critic expected?
-                    advantage_unclipped = target_value - critic
+                    advantage_unclipped = target_value - V
+                    episode_advantages.append(advantage_unclipped)
                     advantage = np.clip(advantage_unclipped, -5.0, 5.0)
 
                     # --- THE BACKWARD PASS ---
@@ -169,23 +192,22 @@ class RL_trainer:
                     self.model.state = next_state
 
                     states_memory.append(normalized_state)
-                    target_V = critic + advantage_unclipped  # Use unclipped advantage for the Critic target to avoid biasing the Critic towards underestimating the value of states 
+                    target_V = V + advantage_unclipped  # Use unclipped advantage for the Critic target to avoid biasing the Critic towards underestimating the value of states 
                     target_mu = mu - d_mu
                     # target_mu = np.clip(target_mu, 0.05, 0.95)
+                    target_V = np.clip(target_V, -100, 105.0)
 
-                    target_V_memory.append([target_V])
-                    target_mu_memory.append([target_mu])
+                    target_V_memory.append(target_V)
+                    target_mu_memory.append(target_mu)
 
-                    batch_size = 32
+                    batch_size = 64
 
                     if len(states_memory) >= batch_size:
-                        
-                        self.NN_mu.backward(np.array(states_memory), np.array(target_mu_memory), learning_rate / batch_size)
-                        self.NN_V.backward(np.array(states_memory), np.array(target_V_memory), learning_rate * 10 / batch_size)
+                        self.NN_mu.backward(np.array(states_memory), np.array(target_mu_memory).reshape(-1, 1), learning_rate_discount * learning_rate / batch_size)
+                        self.NN_V.backward(np.array(states_memory), np.array(target_V_memory).reshape(-1, 1),  learning_rate * V_lrn / batch_size)
 
                         # Update exploration noise (entropy_coeff resists collapse to floor)
-                        entropy_coeff = 0.05
-                        self.log_std -= learning_rate * (self.d_log_std / batch_size - entropy_coeff)
+                        self.log_std -= learning_rate_discount * learning_rate * (self.d_log_std / batch_size - dynamic_entropy)
                         self.log_std = np.clip(self.log_std, self.log_floor, self.log_ceiling)
 
                         states_memory = []
@@ -197,13 +219,13 @@ class RL_trainer:
 
             # Flush any remaining experience after both sides complete
             if len(states_memory) > 0:
-                entropy_coeff = 0.05
-                self.NN_mu.backward(np.array(states_memory), np.array(target_mu_memory), learning_rate / batch_size)
-                self.NN_V.backward(np.array(states_memory), np.array(target_V_memory), learning_rate / batch_size)
-                self.log_std -= learning_rate * (self.d_log_std / len(states_memory) - entropy_coeff)
+                self.NN_mu.backward(np.array(states_memory), np.array(target_mu_memory).reshape(-1, 1), learning_rate_discount * learning_rate / batch_size)
+                self.NN_V.backward(np.array(states_memory), np.array(target_V_memory).reshape(-1, 1), learning_rate * V_lrn / batch_size)
+                self.log_std -= learning_rate_discount * learning_rate * (self.d_log_std / len(states_memory) - dynamic_entropy)
                 self.log_std = np.clip(self.log_std, self.log_floor, self.log_ceiling)
 
-            print(f"Episode {episode} finished! Total Reward: {total_episode_reward:.2f}, runtime = {runtimes[0]}, {runtimes[1]}")
+
+            print(f"Episode {episode} finished! Total Reward: {total_episode_reward:.2f}, runtime = {runtimes[0]}, {runtimes[1]}, advantage = {advantage:.2f}")
 
             if episode == 0:
                 best_reward = total_episode_reward
@@ -237,28 +259,39 @@ class RL_trainer:
                 self.NN_V.theta_save(2)  # periodic save to slot2 for recovery from crashes, not policy collapse
                 print('Periodic Save to 2!')
 
-            if total_episode_reward < max(35, second_best_reward * 0.05):  # If we do very poorly, it's a sign of potential policy collapse, but we only want to trigger on a string of bad luck if we haven't had any recent successes to reassure us that the policy is still viable
+            if total_episode_reward < max(20, second_best_reward * 0.2):  # If we do very poorly, it's a sign of potential policy collapse, but we only want to trigger on a string of bad luck if we haven't had any recent successes to reassure us that the policy is still viable
                 fail_count += 1
             else:
                 fail_count = 0
 
-            if fail_count >= 100 and previously_saved:
+            if fail_count >= 200 and previously_saved: 
                 self.NN_mu.theta_recover(i = 1)
                 self.NN_V.theta_recover(i = 1)
+                self.sync_target(hard=True)
                 print('policy_collapse')
                 self.log_std = init_log_std  # restore exploration, not kill it
                 fail_count = 0
 
+            self.sync_target(tau=0.05)
             reward_history.append(total_episode_reward)
             log_std_history.append(self.log_std)
+            advantage_history.append(np.mean(np.abs(episode_advantages)) if episode_advantages else 0.0)
+            signed_advantage_history.append(np.mean(episode_advantages) if episode_advantages else 0.0)
+
+            recent = np.mean(reward_history[-50:])
+            learning_rate_discount = float(np.clip(3 - 3 * recent / 7200, 0.1, 1.0))
 
             episodes = range(len(reward_history))
             line1.set_data(episodes, reward_history)
             line2.set_data(episodes, log_std_history)
+            line3.set_data(episodes, advantage_history)
+            line4.set_data(episodes, signed_advantage_history)
             ax1.relim()
             ax1.autoscale_view()
             ax2.relim()
             ax2.autoscale_view()
+            ax3.relim()
+            ax3.autoscale_view()
             fig.canvas.flush_events()
 
         self.NN_mu.theta_save(2)
