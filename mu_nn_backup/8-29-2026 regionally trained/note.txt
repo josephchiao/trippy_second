@@ -1,0 +1,14 @@
+This set was trained on success01. Set trained on a single run. Critict seems unstable. No oscillation problem, and the cart centered nicely. 
+No.1 is the best performing. No.4 is not trained on centering. 
+
+Noted at 6:36 PM
+
+Configuration:      
+self.NN_V = nn.NeuralNetwork((4, 64, 64, 1), [nn.ELU, nn.ELU, nn.linear], 'V_nn_library')
+self.NN_mu = nn.NeuralNetwork((4, 16, 16, 1), [nn.ELU, nn.ELU, nn.sigmoid], 'mu_nn_library')
+self.NN_V.theta_generate(bias_loc = [0, 0, 32])
+self.NN_mu.theta_generate()
+
+learning rate = 0.0001
+V_lr = 5
+batch size = 64
