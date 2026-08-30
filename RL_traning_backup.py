@@ -21,8 +21,8 @@ class RL_trainer:
         self.NN_V = nn.NeuralNetwork((4, 64, 64, 1), [nn.ELU, nn.ELU, nn.linear], 'V_nn_library')
         self.NN_mu = nn.NeuralNetwork((4, 16, 16, 1), [nn.ELU, nn.ELU, nn.sigmoid], 'mu_nn_library')
 
-        self.NN_V.theta_generate(bias_loc = [0, 0, 32])
-        self.NN_mu.theta_generate()
+        # self.NN_V.theta_generate(bias_loc = [0, 0, 32])
+        # self.NN_mu.theta_generate()
 
         self.NN_V.theta_recover()
         self.NN_mu.theta_recover()
@@ -36,12 +36,12 @@ class RL_trainer:
 
         # schedule_scaler = 0.15 * np.clip((episode - 300) / 2000, 0, 1) 
 
-        location_cf = 0.05 * next_phase       # Weight on staying near x = 0
+        location_cf = 0.1       # Weight on staying near x = 0
         spl_location_cf = 0   # Weight on staying near x = 0 when the cart is far away
-        angle_cf = 1 - 0.05 * next_phase         # Weight on staying upright (angle = pi)
-        time_reward = 0       # Flat per-frame bonus; positive rewards survival, negative penalizes stalling
+        angle_cf = 1.8         # Weight on staying upright (angle = pi)
+        time_reward = -1       # Flat per-frame bonus; positive rewards survival, negative penalizes stalling
         effort_reward = 0
-        velocity_cf = 0
+        velocity_cf = 0.1
         # -cos(angle) peaks at +1 upright and bottoms at -1 hanging down.
         # The location term decays linearly with |x| and is floored at 0 so a
         # far-away cart is merely unrewarded rather than heavily punished.
@@ -136,7 +136,7 @@ class RL_trainer:
         # Deterministic evaluation run every 100 episodes (both starting sides summed)
         marker_eval, = ax1.plot([], [], linestyle='-', marker='o', markersize=3,
                                 color='tab:green', lw=1, label='eval (no noise)', zorder=4)
-        ax1.legend(loc='lower right', fontsize='small', ncol=2)
+        # ax1.legend(loc='lower right', fontsize='small', ncol=2)
         line2, = ax2.plot([], [])
         line3, = ax3.plot([], [], label='|advantage|')  # Magnitude: how wrong the critic is
         line4, = ax3.plot([], [], label='signed')       # Sign: whether it over- or under-estimates
@@ -148,7 +148,7 @@ class RL_trainer:
         previously_saved = False  # don't let recovery load a stale checkpoint from a previous run
         # rolling_counter = np.zeros(50) # Maybe we need???
         
-        V_lrn = 5
+        V_lrn = 10
         pre_calibrated = True
         phase_2 = False
 
@@ -182,16 +182,16 @@ class RL_trainer:
                 eval_episodes.append(episode)
                 eval_rewards.append(total_reward)
 
-            learning_rate = 0.0001
-            if signed_advantage_history and (not pre_calibrated or signed_advantage_history[-1] < 0.15):
-                V_lrn = 5  # Critic learning rate multiplier
-                pre_calibrated = False
+            learning_rate = 0.0002
+            # if signed_advantage_history and (not pre_calibrated or signed_advantage_history[-1] < 0.15):
+            #     V_lrn = 5  # Critic learning rate multiplier
+            #     pre_calibrated = False
 
-            # random_angle = np.clip(np.random.normal(0, np.pi/120), -np.pi/60, np.pi/60)
-            # random_location = np.clip(np.random.normal(0.5, 0.2), 0, 1)
+            random_angle = np.clip(np.random.normal(0, np.pi/60), -np.pi/30, np.pi/30)
+            random_location = np.clip(np.random.normal(1, 0.5), 0, 2)
 
-            random_angle = np.pi/30
-            random_location = 0
+            # random_angle = np.pi/30
+            # random_location = 0
 
             learning_rate_discount = 1
 
@@ -351,10 +351,10 @@ class RL_trainer:
             else:
                 fail_count = 0
 
-            if not phase_2 and total_episode_reward >= 7175:
-                self.NN_mu.theta_save(4) 
-                self.NN_V.theta_save(4)  
-                phase_2 = True
+            # if not phase_2 and total_episode_reward >= 7175:
+            #     self.NN_mu.theta_save(4) 
+            #     self.NN_V.theta_save(4)  
+            #     phase_2 = True
 
             if fail_count >= 500 and previously_saved: 
                 self.NN_mu.theta_recover(i = 0)
