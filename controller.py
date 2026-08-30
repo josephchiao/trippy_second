@@ -1,4 +1,3 @@
-from main_legacy import DoublePendulum
 import pid
 import numpy as np
 import neural_network as nn
@@ -111,7 +110,7 @@ class SP_Controller:
                     self.stable_counter = 0      
         
         elif mode == 'ML':
-            NN = nn.NeuralNetwork((4, 16, 16, 1), [nn.ReLU, nn.ReLU, nn.sigmoid], 'mu_nn_library')
+            NN = nn.NeuralNetwork((4, 16, 16, 1), [nn.ELU, nn.ELU, nn.sigmoid], 'mu_nn_library')
             NN.theta_recover(self.network)
             self.motor_force = (NN.feedforward(RL_trainer.normalize(self, state = self.pendulum.state))[-1][0][0] - 0.5) * 200
             state_string = 'ML control'
