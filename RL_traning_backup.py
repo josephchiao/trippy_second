@@ -21,7 +21,7 @@ class RL_trainer:
         self.NN_V = nn.NeuralNetwork((4, 64, 64, 1), [nn.ELU, nn.ELU, nn.linear], 'V_nn_library')
         self.NN_mu = nn.NeuralNetwork((4, 16, 16, 1), [nn.ELU, nn.ELU, nn.sigmoid], 'mu_nn_library')
 
-        self.NN_V.theta_generate(bias_loc = [0, 0, 3])
+        self.NN_V.theta_generate(bias_loc = [0, 0, 32])
         self.NN_mu.theta_generate()
 
         self.NN_V.theta_recover()
@@ -148,7 +148,7 @@ class RL_trainer:
         previously_saved = False  # don't let recovery load a stale checkpoint from a previous run
         # rolling_counter = np.zeros(50) # Maybe we need???
         
-        V_lrn = 2
+        V_lrn = 5
         pre_calibrated = True
         phase_2 = False
 
