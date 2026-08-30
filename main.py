@@ -205,7 +205,7 @@ def SP_animate(solution, cost, state_history, params, t_eval, fps = 60, speed = 
 
 
 
-runtime = 60
+runtime = 120
 refresh_rate = 60
 
 def run(control_type = "None", animation = True, speed = 1):
@@ -283,10 +283,10 @@ def custom_run(control_type = [], time_table = [], animation = True, speed = 1):
         t_array = np.linspace(0, runtime, int(time_table[-1] * refresh_rate))
         DP_animate(solution, total_cost, state_history, double_pendulum.params, t_array, fps = refresh_rate, speed = speed)
 
-def SP_run(control_type = "None", animation = True, speed = 1, network = 0):
+def SP_run(control_type = "None", animation = True, static_plot = True, speed = 1, network = 0, y0 = [0, np.pi, 0, 0]):
     
     t = 0
-    single_pendulum = physics.SinglePendulum(params = (9.81, 1, 1, 1), y0 = [-1, np.pi-0.2, 0, 0], refresh_rate = refresh_rate)
+    single_pendulum = physics.SinglePendulum(params = (9.81, 1, 1, 1), y0 = y0, refresh_rate = refresh_rate)
     motor_controller = controller.SP_Controller(single_pendulum, target = 0, max_motor_force = 100, network = network)
     solution = []
     state_history = []
@@ -313,11 +313,35 @@ def SP_run(control_type = "None", animation = True, speed = 1, network = 0):
         total_cost += cost
 
     solution = np.array(solution)
+    t_array = np.arange(len(solution)) / refresh_rate
+
+    if static_plot:
+        # Built before the animation so the blocking plt.show() below displays both figures.
+        fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(10, 8), sharex=True, constrained_layout=True)
+        fig.suptitle(f'Single pendulum - control: {control_type} (cost = {total_cost:.2f})')
+
+        ax1.plot(t_array, solution[:, 0], label='Cart Position (m)')
+        ax1.set_ylabel('Position (m)')
+
+        ax2.plot(t_array, solution[:, 1], label='Pendulum Angle (rad)', color='orange')
+        ax2.axhline(np.pi, color='k', lw=0.5, ls='--')
+        ax2.set_ylabel('Angle (rad)')
+
+        ax3.plot(t_array, solution[:, 4], label='Motor Force (N)', color='green')
+        ax3.set_ylabel('Force (N)')
+        ax3.set_xlabel('Time (s)')
+
+        for ax in (ax1, ax2, ax3):
+            ax.grid(True, alpha=0.3)
+            ax.legend(loc='upper right')
+
     if animation:
-        t_array = np.linspace(0, runtime, int(runtime * refresh_rate))
         SP_animate(solution, total_cost, state_history, single_pendulum.params, t_array, fps = refresh_rate, speed = speed)
+    elif static_plot:
+        plt.show()
 
 if __name__ == "__main__":
     # run(control_type = "inverted_rod_2", animation = True, speed = 1)
     # custom_run(['position_hold', 'inverted_rod_1', 'inverted_rod_2'], [15,45,75])
-    SP_run(control_type = "ML", animation = True, speed = 1, network = 0)
+    SP_run(control_type = "ML", animation = True, static_plot = True, speed = 0, network = 0, y0 = [2, np.pi-0.2, 0, 0])
+    SP_run(control_type = "ML", animation = True, static_plot = True, speed = 0, network = 0, y0 = [-2, np.pi+0.2, 0, 0])
