@@ -1,0 +1,23 @@
+Critic half of the 8-30-2026 specialty trained pair. Pull this together with
+mu_nn_backup/8-30-2026 specialty trained/ - see that folder's note for how the
+pair was trained and which slot performs best.
+
+This V was seeded from the critict_trainer-calibrated critic
+(V_nn_backup/8-29-2026 well trained critict/) and then trained alongside the
+actor, so it is fitted to that specific policy. Stable but not accurate.
+
+Slots: 0 (best), 1 (previous best), 2 (periodic).
+No.0 pairs with the actor's No.0, which is the best performing of the pair.
+
+Configuration:
+self.NN_V = nn.NeuralNetwork((4, 64, 64, 1), [nn.ELU, nn.ELU, nn.linear], 'V_nn_library')
+self.NN_mu = nn.NeuralNetwork((4, 16, 16, 1), [nn.ELU, nn.ELU, nn.sigmoid], 'mu_nn_library')
+self.NN_V.theta_generate(bias_loc = [0, 0, 32])
+self.NN_mu.theta_generate()
+
+learning rate = 0.0002
+V_lr = 10
+batch size = 64
+
+(Note written 8-31-2026, reconstructed from the paired mu note - the archive
+itself was saved 8-30-2026 11:19 AM with no note of its own.)

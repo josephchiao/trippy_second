@@ -1,0 +1,29 @@
+INDEX - actor (mu) backups
+==========================
+Slots inside every folder: 0 = best, 1 = previous best, 2 = periodic save,
+3 = untrusted outlier, 4 = manual milestone.
+
+Restore with:   cp "mu_nn_backup/<folder>/nn_theta_set_*.npz" mu_nn_library/
+and pull the critic from the matching V_nn_backup folder at the same time.
+
+8-30-2026 specialty trained/   slots 0,1,2   <-- best, use this one
+    Balances and recenters the cart to within 0.004. No oscillation.
+    No.0 is the best performing. No.2 was overtrained. See its note.txt.
+
+8-29-2026 regionally trained/   slots 0,1,2,4
+    First actor that could put the rod upright, trained from theta init in a
+    single run. No.1 is the best performing. No.4 is not trained on centering,
+    so it is the one to reach for if centering is fighting the angle term.
+    Pair with V_nn_backup/8-29-2026 well trained critict/ (slot 2) rather than
+    the 8-29 critic if you want a stable value function.
+
+nn_theta_set_{0,1,2}.npz (loose, this folder)   saved 8-30-2026 11:03 AM
+    Provenance not recorded. Timestamped 16 minutes before the "8-30 specialty
+    trained" folder was archived, so most likely the same run caught slightly
+    earlier - but that is inference, not something that was written down.
+    Prefer the dated folders; treat these as a last resort.
+
+Gap worth knowing about: mu_nn_library has no nn_theta_set_1.npz as of
+8-31-2026, so the rollback path theta_recover(i = 1) would raise
+FileNotFoundError for the actor. Copy a slot 1 in from a backup folder before
+relying on that path.

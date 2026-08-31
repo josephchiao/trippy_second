@@ -1,0 +1,14 @@
+This set was trained on success02. Set trained on a mu_NN already capable of putting the rod upright from success01, and a V_NN that was extensively calibrated and verified using critict trainer. Critict is stable but not accurate. No oscillation problem, and the cart centered nicely to 0.004. 
+No.0 is the best performing. No.2 was overtrained. 
+
+Noted at 11:22 AM
+
+Configuration:      
+self.NN_V = nn.NeuralNetwork((4, 64, 64, 1), [nn.ELU, nn.ELU, nn.linear], 'V_nn_library')
+self.NN_mu = nn.NeuralNetwork((4, 16, 16, 1), [nn.ELU, nn.ELU, nn.sigmoid], 'mu_nn_library')
+self.NN_V.theta_generate(bias_loc = [0, 0, 32])
+self.NN_mu.theta_generate()
+
+learning rate = 0.0002
+V_lr = 10
+batch size = 64

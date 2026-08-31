@@ -45,6 +45,25 @@ Both trainers write several numbered slots per network, and the visualizers read
 | `nn_theta_set_2.npz` | Periodic save, for recovering from a crash |
 | `nn_theta_set_3.npz` | An episode that scored suspiciously well; saved but not trusted as a new best |
 
+### Pulling a known-good network from backup
+
+`V_nn_backup/note.txt` and `mu_nn_backup/note.txt` index every archived set; each dated folder carries its own `note.txt` with the training configuration. The short version:
+
+| You want | Actor (`mu`) | Critic (`V`) |
+|---|---|---|
+| The best balancing policy | `mu_nn_backup/8-30-2026 specialty trained/` slot 0 | `V_nn_backup/8-30-2026 specialty trained/` slot 0 |
+| A trustworthy value function to build on | `mu_nn_backup/8-29-2026 regionally trained/` slot 1 | `V_nn_backup/8-29-2026 well trained critict/` slot 2 |
+| A policy not trained on centering | `mu_nn_backup/8-29-2026 regionally trained/` slot 4 | pair with the 8-29 critic |
+
+```bash
+cp "mu_nn_backup/8-30-2026 specialty trained/"*.npz mu_nn_library/
+cp "V_nn_backup/8-30-2026 specialty trained/"*.npz  V_nn_library/
+```
+
+**Pull the actor and critic from the same dated folder.** The critic is fitted to the specific policy it was trained against, so a mismatched pair gives you advantages computed against a value function that never saw this actor. The one deliberate exception is `8-29-2026 well trained critict/`, which is a `critict_trainer.py` recalibration of the critic for the 8-29 policy.
+
+Remember that `RL_training.py` wipes both library folders on startup — restore *after* commenting out the `theta_generate()` calls, not before.
+
 ## Requirements
 
 - Python 3.9+

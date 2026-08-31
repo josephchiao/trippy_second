@@ -1,0 +1,33 @@
+INDEX - critic (V) backups
+==========================
+Slots inside every folder: 0 = best, 1 = previous best, 2 = periodic save,
+3 = untrusted outlier, 4 = manual milestone.
+
+Restore with:   cp "V_nn_backup/<folder>/nn_theta_set_*.npz" V_nn_library/
+and pull the actor from the matching mu_nn_backup folder at the same time - a
+critic is fitted to the policy it was trained against and is not meaningful on
+its own.
+
+8-30-2026 specialty trained/   slots 0,1,2   <-- best pair, use this one
+    Critic for the best-performing actor. Seeded from the calibrated critic
+    below, then co-trained. Stable but not accurate. See its note.txt.
+
+8-29-2026 well trained critict/   slot 2 only
+    V alone, calibrated with critict_trainer.py against the success01 policy.
+    Nothing to pair it with in mu_nn_backup - it goes with the 8-29 regionally
+    trained actor. This is the starting point to use when you want a trustworthy
+    value function before touching the actor.
+
+8-29-2026 regionally trained/   slots 0,1,2,4
+    First working pair. Critic unstable. Superseded by the two above.
+
+nn_theta_set_{0,1,2}.npz (loose, this folder)   saved 8-30-2026 11:03 AM
+    Provenance not recorded. Timestamped 16 minutes before the "8-30 specialty
+    trained" folder was archived, so most likely the same run caught slightly
+    earlier - but that is inference, not something that was written down.
+    Prefer the dated folders; treat these as a last resort.
+
+Not a backup, but worth knowing: as of 8-31-2026 the live V_nn_library holds
+weights from the in-progress swing-up runs (8-30 11:52 PM / 8-31 12:32 AM), NOT
+any of the sets above. The live mu_nn_library slot 0 IS byte-identical to the
+8-30 specialty trained slot 0.

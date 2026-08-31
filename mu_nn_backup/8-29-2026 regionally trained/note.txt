@@ -1,4 +1,4 @@
-This set was trained on success01. Set trained on a single run. Critict seems unstable. No oscillation problem, and the cart centered nicely. 
+This set was trained on success01. Set trained on a single run from theta init. Critict seems unstable. No oscillation problem, and the cart centered nicely. 
 No.1 is the best performing. No.4 is not trained on centering. 
 
 Noted at 6:36 PM
