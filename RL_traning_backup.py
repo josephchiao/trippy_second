@@ -47,12 +47,13 @@ class RL_trainer:
         # far-away cart is merely unrewarded rather than heavily punished.
         
         # reward = time_reward - angle_cf * math.cos(state[1]) + max(0, location_cf * (1 - 0.3 * abs(state[0])))
-        reward = time_reward - angle_cf * math.cos(state[1]) + location_cf * 0.25 / (0.25 + abs(state[0])) - velocity_cf * np.clip(state[2]**2 / 16.0 + state[3]**2, 0, 1) + spl_location_cf * (abs(state[0]) < 0.1) + effort_reward * (1 - abs(np.tanh(self.model.motor_force / 3)))
+        reward = time_reward - angle_cf * math.cos(state[1]) + location_cf * 0.1 / (0.1 + abs(state[0])) - velocity_cf * np.clip(state[2]**2 / 16.0 + state[3]**2, 0, 1) + spl_location_cf * (abs(state[0]) < 0.1) + effort_reward * (1 - abs(np.tanh(self.model.motor_force / 3)))
         
         return reward
 
     def normalize(self, state):
         """Normalize terms for the state to be readable by the neural network."""
+        return np.array([10/(1+np.exp(-0.4*state[0]))-5, state[1]-np.pi, state[2], state[3]])
         return np.array([state[0], state[1]-np.pi, state[2], state[3]])
 
 
@@ -148,7 +149,7 @@ class RL_trainer:
         previously_saved = False  # don't let recovery load a stale checkpoint from a previous run
         # rolling_counter = np.zeros(50) # Maybe we need???
         
-        V_lrn = 10
+        V_lrn = 5
         pre_calibrated = True
         phase_2 = False
 
@@ -158,7 +159,7 @@ class RL_trainer:
                 t = 0
                 total_reward = 0
                 done = False
-                self.model.state = [0, np.pi+0.1, 0, 0]
+                self.model.state = [6, np.pi, 0, 0]
                 while not done:
                     t += 1
                     mu = self.NN_mu.feedforward(self.normalize(self.model.state))[-1][0][0]
@@ -167,7 +168,7 @@ class RL_trainer:
                     total_reward += self.reward(self.model.state, next_phase = phase_2)
                     done = self.model.state[1] <= np.pi/2 or self.model.state[1] >= 3*np.pi/2 or t >= (max_runtime) * self.model.refresh_rate or abs(self.model.state[2]) > 100 or abs(self.model.state[3]) > 100 or abs(self.model.state[0]) > 100 or np.isnan(self.model.state).any()  # Check for failure conditions 
 
-                self.model.state = [0, np.pi-0.1, 0, 0]
+                self.model.state = [-6, np.pi, 0, 0]
                 t = 0
                 done = False
                 
@@ -182,16 +183,16 @@ class RL_trainer:
                 eval_episodes.append(episode)
                 eval_rewards.append(total_reward)
 
-            learning_rate = 0.0002
+            learning_rate = 0.0001
             # if signed_advantage_history and (not pre_calibrated or signed_advantage_history[-1] < 0.15):
             #     V_lrn = 5  # Critic learning rate multiplier
             #     pre_calibrated = False
 
-            random_angle = np.clip(np.random.normal(0, np.pi/60), -np.pi/30, np.pi/30)
-            random_location = np.clip(np.random.normal(1, 0.5), 0, 2)
+            # random_angle = np.clip(np.random.normal(0, np.pi/60), -np.pi/30, np.pi/30)
+            # random_location = np.clip(np.random.normal(1, 0.5), 0, 2)
 
-            # random_angle = np.pi/30
-            # random_location = 0
+            random_angle = 0
+            random_location = 6
 
             learning_rate_discount = 1
 
