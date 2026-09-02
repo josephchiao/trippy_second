@@ -311,9 +311,9 @@ class DP_Controller:
             # Stage 3: Kick to inverted position
             elif self.pendulum.state[1] >= np.pi/2 and self.pendulum.state[1] <= 3 * np.pi/2 and abs(self.pendulum.state[1] - np.pi + 0.2 * math.atan(offset)) >= np.pi/5 and self.stable_counter == 0:
                 state_string = 'kick rod1 to inverted position'
-                self.angular_controller_2.kp = 20
-                self.angular_controller_2.kd = 20
-                self.angular_controller_2.target = np.pi
+                self.angular_controller_2.kp = 10
+                self.angular_controller_2.kd = 100
+                self.angular_controller_2.target = np.pi - 0.05 * self.pendulum.state[5]
 
                 self.motor_force = self.angular_controller_2.update() * 10
                 self.position_controller_2.update()
@@ -343,13 +343,17 @@ class DP_Controller:
             else:
 
                 state_string = 'maintain'
-                self.angular_controller_2.kp = 1000
-                self.angular_controller_2.kd = 1000
-                self.angular_controller_2.target = np.pi
+                self.angular_controller_2.kp = 1400
+                self.angular_controller_2.kd = 1100
+
+                self.position_controller_2.kp = 1.2
+                self.position_controller_2.ki = 0
+                self.position_controller_2.kd = 2500
+                
                 
                 offset = self.position_controller_2.update()
-                rod2_target = np.pi + min(0.07, (self.pendulum.state[0] - self.target) ** 2 * 0.02) * math.atan(-0.1 * offset)
-                rod1_target = 1.21 * (self.pendulum.state[2] - rod2_target) + 0.05 * self.pendulum.state[5] + rod2_target
+                rod2_target = np.pi + min(0.1, (self.pendulum.state[0] - self.target) ** 2 * 0.06) * math.atan(-0.25 * offset)
+                rod1_target = 1.249 * (self.pendulum.state[2] - rod2_target) + 0.05 * self.pendulum.state[5] + rod2_target
 
                 self.angular_controller_2.target = rod1_target
                 
