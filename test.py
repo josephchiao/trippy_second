@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import neural_network as nn
+from plot_utils import timestamp_figure
 
 
 # --- Network inputs, in the order normalize() feeds them ---
@@ -31,6 +32,7 @@ def V_sweep(NN_V, index, lo, hi, n = RESOLUTION):
 def plot_V_slices(NN_V):
     fig, axes = plt.subplots(2, 2, figsize = (11, 8))
     fig.suptitle('Critic V, one input swept at a time (all others = 0)')
+    timestamp_figure(fig)
 
     for index, ax in enumerate(axes.flat):
         lo, hi = INPUT_RANGES[index]
