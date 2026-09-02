@@ -8,6 +8,7 @@ from scipy.integrate import solve_ivp
 import sympy as sm
 import pid 
 import neural_network as nn
+from plot_utils import timestamp_figure
 
 class DoublePendulum:
     """
@@ -468,6 +469,7 @@ class DoublePendulum:
         force_history = solution[:, 6]
 
         fig, ax = plt.subplots()
+        timestamp_figure(fig)
         ax.set_aspect('equal')
         ax.set_xlim(-10, 15)
         ax.set_ylim(-3, 8)
@@ -842,6 +844,7 @@ class SinglePendulum:
         force_history = solution[:, 4]
 
         fig, ax = plt.subplots()
+        timestamp_figure(fig)
         ax.set_aspect('equal')
         ax.set_xlim(-10, 10)
         ax.set_ylim(-3, 7)
