@@ -37,6 +37,7 @@ from matplotlib.colors import LinearSegmentedColormap, to_rgba
 from matplotlib.widgets import Slider, RadioButtons, Button
 
 import neural_network as nn
+from plot_utils import timestamp_figure
 
 
 # --- kept in sync with RL_training.RL_trainer.__init__ ------------------------
@@ -287,6 +288,7 @@ class NetworkVisualizer:
 
         self.fig = plt.figure(figsize=(14, 9.0))
         self.fig.canvas.manager.set_window_title('NN activation viewer')
+        timestamp_figure(self.fig, color='0.55')
         self.ax = self.fig.add_axes([0.04, 0.32, 0.80, 0.64])
         self.ax.set_facecolor('#12151c')
         self.fig.patch.set_facecolor('#1b1f27')
