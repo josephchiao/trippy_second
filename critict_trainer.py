@@ -5,8 +5,11 @@ import math
 from scipy.integrate import solve_ivp
 import random
 import physics
+from V_slice_panel import VSlicePanel
 from datetime import datetime
  
+V_slice_interval = 25  # Episodes between critic-slice redraws
+
 
 class RL_trainer:
 
@@ -21,6 +24,7 @@ class RL_trainer:
 
         self.NN_V_tgt = nn.NeuralNetwork((4, 64, 64, 1), [nn.ELU, nn.ELU, nn.linear], 'V_nn_library')
         self.sync_target(hard=True)
+        self.V_slice = VSlicePanel()  # the critic-slice window, built on first redraw
 
     def reward(self, state, episode = 0, next_phase = False):
 
@@ -283,6 +287,10 @@ class RL_trainer:
             ax3.autoscale_view()
             fig.canvas.flush_events()
             #endregion 
+
+            # Critic shape check, every V_slice_interval episodes
+            if episode % V_slice_interval == 0:
+                self.V_slice.update(self.NN_V, episode)
 
 
         self.NN_mu.theta_save(2)
