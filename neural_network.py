@@ -23,7 +23,7 @@ class NeuralNetwork:
             print('failed, null location')
             quit()
 
-    def theta_generate(self, n = 1, weight_loc = None, bias_loc = None):
+    def theta_generate(self, n = 1, weight_loc = None, bias_loc = None, seed = None):
 
         """For initializing training set"""
 
@@ -43,7 +43,8 @@ class NeuralNetwork:
                                    file_name = f"{self.location}/nn_theta_set_{dataset}.npz", ## Fix formating
                                    init_type = "normal",
                                    weight_loc = weight_loc,
-                                   bias_loc = bias_loc)
+                                   bias_loc = bias_loc,
+                                   seed = seed)
 
     def theta_recover(self, i = 0):
 
@@ -191,8 +192,9 @@ def LeakyReLU(x, type="Normal", alpha=0.01):
 
 def ELU(x, type = 'Normal', alpha = 1):
     if type == 'Derivative':
-        return np.where(x > 0, 1, ELU(x, alpha=alpha) + alpha)
-    return (x > 0) * x + (x <= 0) * (alpha * (np.exp(x) - 1))
+        return np.where(x > 0, 1, x + alpha)
+
+    return (x > 0) * x + (x <= 0) * (x > -10) * (alpha * (np.exp(x) - 1)) + (x <= -10) * (-1)
 
 def linear(x, type = 'Normal'):
     if type == 'Derivative':
