@@ -111,8 +111,8 @@ class DoublePendulum:
     def get_accelerations(self, state):
         x, th1, th2, dx, dth1, dth2 = state
         g, m_c, m1, m2, L1, L2 = self.params
-        I1 = 1/3 * m1 * L1**2
-        I2 = 1/3 * m2 * L2**2
+        I1 = 1/12 * m1 * L1**2
+        I2 = 1/12 * m2 * L2**2
 
         
         # Calculate physics matrices (from SymPy)
@@ -254,7 +254,7 @@ class SinglePendulum:
     def get_accelerations(self, state):
         x, th1, dx, dth1 = state
         g, m_c, m1, L1 = self.params
-        I1 = 1/3 * m1 * L1**2
+        I1 = 1/12 * m1 * L1**2
 
         
         # Calculate physics matrices (from SymPy)
