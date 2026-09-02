@@ -5,6 +5,7 @@ import math
 from scipy.integrate import solve_ivp
 import redone_legacy
 import random
+from plot_utils import timestamp_figure
 
 class RL_trainer:
 
@@ -62,6 +63,7 @@ class RL_trainer:
 
         plt.ion()
         fig, (ax1, ax2) = plt.subplots(2, 1)
+        timestamp_figure(fig, label='Run started')
         ax1.set_xlabel('Episode')
         ax1.set_ylabel('Reward')
         ax2.set_xlabel('Episode')
