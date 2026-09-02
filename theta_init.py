@@ -8,7 +8,10 @@ def normal_theta_init(loc, scale, size):
 
     return np.random.normal(loc, scale, size)
 
-def create_file(dim, file_name = "nn_theta_set.npz", init_type = "normal", weight_loc = None, bias_loc = None):
+def create_file(dim, file_name = "nn_theta_set.npz", init_type = "normal", weight_loc = None, bias_loc = None, seed = None):
+
+    if seed is not None and type(seed) is int:
+        np.random.seed(seed)
 
     if weight_loc == None:
         weight_loc = np.zeros(len(dim) - 1)
